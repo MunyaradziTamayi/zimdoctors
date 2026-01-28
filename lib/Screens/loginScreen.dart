@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:zimdoctors/Screens/homeScreen.dart';
 import 'package:zimdoctors/Screens/registrationScreen.dart';
+import 'package:zimdoctors/reusableWidgets/reusableTextField.dart';
 
 class LoginScreen extends StatefulWidget {
   static String id = 'login_Screen';
@@ -104,15 +105,21 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 32),
 
               // Fields
-              _buildLabel('Email'),
-              _buildTextField(
+              buildLabel('Email'),
+              buildTextField(
+                onChanged: (value){
+
+                },
                 hint: 'example@email.com',
                 icon: Icons.email_outlined,
               ),
               const SizedBox(height: 20),
 
-              _buildLabel('Password'),
-              _buildTextField(
+              buildLabel('Password'),
+              buildTextField(
+                onChanged: (value){
+
+                },
                 hint: 'Enter your password',
                 icon: Icons.lock_outline,
                 obscureText: true,
@@ -310,43 +317,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(
-        text,
-        style: GoogleFonts.inter(
-          color: Colors.white,
-          fontWeight: FontWeight.w500,
-          fontSize: 14,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required String hint,
-    required IconData icon,
-    bool obscureText = false,
-  }) {
-    return TextField(
-      obscureText: obscureText,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: Colors.grey[600]),
-        filled: true,
-        fillColor: const Color(0xFF1E1E1E),
-        prefixIcon: Icon(icon, color: Colors.grey[500], size: 20),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: 16,
-        ),
-      ),
-    );
-  }
 }

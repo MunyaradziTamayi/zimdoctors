@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:zimdoctors/Screens/loginScreen.dart';
+import 'package:zimdoctors/reusableWidgets/reusableTextField.dart';
 
 class RegistrationScreen extends StatefulWidget {
   static String id = 'registration_screen';
@@ -13,6 +14,11 @@ class RegistrationScreen extends StatefulWidget {
 }
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
+  late String fullName;
+  late String email;
+  late String password;
+  late String specialization;
+  String phoneNumber="";
   bool isDoctor = false;
   File? _image;
   final ImagePicker _picker = ImagePicker();
@@ -164,32 +170,53 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               const SizedBox(height: 32),
 
               // Fields
-              _buildLabel('Full Name'),
-              _buildTextField(hint: 'Munyaradzi Tamayi', icon: Icons.person_outline),
+              buildLabel('Full Name'),
+              buildTextField(
+                onChanged: (value) {
+                  fullName = value;
+                },
+                hint: 'Munyaradzi Tamayi',
+                icon: Icons.person_outline,
+              ),
               const SizedBox(height: 20),
 
-              _buildLabel('Email'),
-              _buildTextField(
+              buildLabel('Email'),
+              buildTextField(
+                onChanged: (value) {
+                  email = value;
+                },
                 hint: 'example@email.com',
                 icon: Icons.email_outlined,
               ),
               const SizedBox(height: 20),
 
-              _buildLabel('Phone Number'),
-              _buildTextField(hint: '+263 ...', icon: Icons.phone_outlined),
+              buildLabel('Phone Number'),
+              buildTextField(
+                onChanged: (value) {
+                  phoneNumber = value;
+                },
+                hint: '+263 ...',
+                icon: Icons.phone_outlined, 
+              ),
               const SizedBox(height: 20),
 
               if (isDoctor) ...[
-                _buildLabel('Specialization'),
-                _buildTextField(
+                buildLabel('Specialization'),
+                buildTextField(
+                  onChanged: (value) {
+                    specialization = value;
+                  },
                   hint: 'Cardiologist',
                   icon: Icons.medical_services_outlined,
                 ),
                 const SizedBox(height: 20),
               ],
 
-              _buildLabel('Password'),
-              _buildTextField(
+              buildLabel('Password'),
+              buildTextField(
+                onChanged: (value) {
+                  password = value;
+                },
                 hint: 'Create a password',
                 icon: Icons.lock_outline,
                 obscureText: true,
@@ -201,7 +228,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    print('email :$email');
+                    print('phone :$phoneNumber');
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF57E659),
                     foregroundColor: Colors.black,
@@ -247,46 +277,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               const SizedBox(height: 20),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(
-        text,
-        style: GoogleFonts.inter(
-          color: Colors.white,
-          fontWeight: FontWeight.w500,
-          fontSize: 14,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required String hint,
-    required IconData icon,
-    bool obscureText = false,
-  }) {
-    return TextField(
-      obscureText: obscureText,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: Colors.grey[600]),
-        filled: true,
-        fillColor: const Color(0xFF1E1E1E),
-        prefixIcon: Icon(icon, color: Colors.grey[500], size: 20),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: 16,
         ),
       ),
     );

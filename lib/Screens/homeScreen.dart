@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'dart:ui';
 
+import 'package:zimdoctors/reusableWidgets/reusableElevatedBtn.dart';
+
 class Homescreen extends StatefulWidget {
   static String id = '/home_screen';
 
@@ -111,9 +113,18 @@ class _HomescreenState extends State<Homescreen> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                            _buildDateChip('Today, 26 Jul', isActive: true),
-                            _buildDateChip('Tomorrow, 27 Jul'),
-                            _buildDateChip('Day after, 28 Jul'),
+                           reusableElevatedBtn(btntext: 'Cardiologist'),
+                           SizedBox(width: 4),
+                           reusableElevatedBtn(btntext: 'Oncologist'),
+                           SizedBox(width: 4),
+                           reusableElevatedBtn(btntext: 'Dentist'),
+                           SizedBox(width: 4),
+                           reusableElevatedBtn(btntext: 'Optician'),
+                           SizedBox(width: 4),
+                           reusableElevatedBtn(btntext: 'Gynacologist'),
+                           SizedBox(width: 4),
+                           reusableElevatedBtn(btntext: 'Physician'),
+                          
                           ],
                         ),
                       ),
@@ -135,7 +146,7 @@ class _HomescreenState extends State<Homescreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF57E659), // Lime Green
+                       color: Colors.lime,
                         borderRadius: BorderRadius.circular(32),
                       ),
                       child: Column(
@@ -236,15 +247,15 @@ class _HomescreenState extends State<Homescreen> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(40),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                     child: Container(
                       height: 70,
                       width: 250,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.black.withOpacity(0.4),
                         borderRadius: BorderRadius.circular(40),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withOpacity(0.1),
                           width: 0.5,
                         ),
                       ),
@@ -252,7 +263,7 @@ class _HomescreenState extends State<Homescreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           _buildNavItem(0, Icons.home_filled),
-                          _buildNavItem(1, Icons.calendar_today), // Active tab
+                          _buildNavItem(1, Icons.chat_rounded), // Active tab
                           _buildNavItem(2, Icons.people_outline),
                           _buildNavItem(3, Icons.list),
                         ],
@@ -380,3 +391,5 @@ class _HomescreenState extends State<Homescreen> {
     );
   }
 }
+
+

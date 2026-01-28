@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "146794311153",
+    "project_id": "zimdoctors-1021d",
+    "storage_bucket": "zimdoctors-1021d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:146794311153:android:4967dd4379b5e13f482850",
+        "android_client_info": {
+          "package_name": "com.tamayi.zimdoctors"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjRhVMQyMl-xOm3DiI__3AiLPd2ioWHww"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
