@@ -5,11 +5,11 @@ Widget buildTextField({
   required ValueChanged<String> onChanged,
   required String hint,
   required IconData icon,
- 
-
+  TextEditingController? controller,
   bool obscureText = false,
 }) {
   return TextField(
+    controller: controller,
     onChanged: onChanged,
     obscureText: obscureText,
     style: const TextStyle(color: Colors.white),

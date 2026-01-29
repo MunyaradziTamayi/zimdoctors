@@ -1,9 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:zimdoctors/Screens/homeScreen.dart';
-import 'package:zimdoctors/Screens/registrationScreen.dart';
+import 'package:zimdoctors/Screens/home_screen.dart';
+import 'package:zimdoctors/Screens/registration_screen.dart';
 import 'package:zimdoctors/reusableWidgets/reusableTextField.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   static String id = 'login_Screen';
@@ -14,8 +16,117 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _auth = FirebaseAuth.instance;
   bool isDoctor = false;
   bool rememberMe = false;
+  bool isLoading = false;
+  String email = '';
+  String password = '';
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserEmail();
+  }
+
+  void _loadUserEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedEmail = prefs.getString('userEmail');
+    if (savedEmail != null) {
+      setState(() {
+        email = savedEmail;
+        _emailController.text = savedEmail;
+        rememberMe = true;
+      });
+    }
+  }
+
+  void _saveUserEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (rememberMe) {
+      await prefs.setString('userEmail', email);
+    } else {
+      await prefs.remove('userEmail');
+    }
+  }
+
+  void _showForgotPasswordDialog() {
+    String resetEmail = email;
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: Text(
+            'Reset Password',
+            style: GoogleFonts.inter(color: Colors.white),
+          ),
+          content: TextField(
+            onChanged: (value) => resetEmail = value,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Enter your email',
+              hintStyle: TextStyle(color: Colors.grey[600]),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey[600]!),
+              ),
+              focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFF57E659)),
+              ),
+            ),
+            controller: TextEditingController(text: resetEmail),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.inter(color: Colors.grey[400]),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext); // Close dialog
+                if (resetEmail.isEmpty) return;
+                try {
+                  await _auth.sendPasswordResetEmail(email: resetEmail);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Password reset email sent!',
+                          style: GoogleFonts.inter(color: Colors.white),
+                        ),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          e.toString(),
+                          style: GoogleFonts.inter(color: Colors.white),
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              child: Text(
+                'Send',
+                style: GoogleFonts.inter(color: const Color(0xFF57E659)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -107,8 +218,9 @@ class _LoginScreenState extends State<LoginScreen> {
               // Fields
               buildLabel('Email'),
               buildTextField(
-                onChanged: (value){
-
+                controller: _emailController,
+                onChanged: (value) {
+                  email = value;
                 },
                 hint: 'example@email.com',
                 icon: Icons.email_outlined,
@@ -117,8 +229,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
               buildLabel('Password'),
               buildTextField(
-                onChanged: (value){
-
+                controller: _passwordController,
+                onChanged: (value) {
+                  password = value;
                 },
                 hint: 'Enter your password',
                 icon: Icons.lock_outline,
@@ -161,12 +274,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
-                  Text(
-                    'Forgot Password?',
-                    style: GoogleFonts.inter(
-                      color: Colors.red[400],
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                  GestureDetector(
+                    onTap: _showForgotPasswordDialog,
+                    child: Text(
+                      'Forgot Password?',
+                      style: GoogleFonts.inter(
+                        color: Colors.red[400],
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
@@ -178,8 +294,35 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, Homescreen.id);
+                  onPressed: () async {
+                    setState(() {
+                      isLoading = true;
+                    });
+                    try {
+                      final credential = await _auth.signInWithEmailAndPassword(
+                        email: email,
+                        password: password,
+                      );
+                      if (credential.user != null) {
+                        _saveUserEmail();
+                        Navigator.pushNamed(context, Homescreen.id);
+                      }
+                    } catch (e) {
+                      print(e);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            e.toString(),
+                            style: GoogleFonts.inter(color: Colors.white),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    } finally {
+                      setState(() {
+                        isLoading = false;
+                      });
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF57E659),
@@ -189,13 +332,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     elevation: 0,
                   ),
-                  child: Text(
-                    'Login',
-                    style: GoogleFonts.inter(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  child: isLoading
+                      ? const CircularProgressIndicator(color: Colors.black)
+                      : Text(
+                          'Login',
+                          style: GoogleFonts.inter(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                 ),
               ),
 
@@ -316,5 +461,4 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-
 }

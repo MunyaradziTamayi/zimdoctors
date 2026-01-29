@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:zimdoctors/Screens/loginScreen.dart';
+import 'package:zimdoctors/Screens/home_screen.dart';
+import 'package:zimdoctors/Screens/login_screen.dart';
 import 'package:zimdoctors/reusableWidgets/reusableTextField.dart';
 
 class RegistrationScreen extends StatefulWidget {
@@ -14,14 +16,28 @@ class RegistrationScreen extends StatefulWidget {
 }
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
-  late String fullName;
-  late String email;
-  late String password;
-  late String specialization;
-  String phoneNumber="";
+  final _auth = FirebaseAuth.instance;
+
+  final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController(text: '+263 ');
+  final _passwordController = TextEditingController();
+  final _specializationController = TextEditingController();
+
   bool isDoctor = false;
+  bool isLoading = false;
   File? _image;
   final ImagePicker _picker = ImagePicker();
+
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    _specializationController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickImage() async {
     final XFile? pickedFile = await _picker.pickImage(
@@ -172,9 +188,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               // Fields
               buildLabel('Full Name'),
               buildTextField(
-                onChanged: (value) {
-                  fullName = value;
-                },
+                controller: _fullNameController,
+                onChanged: (value) {},
                 hint: 'Munyaradzi Tamayi',
                 icon: Icons.person_outline,
               ),
@@ -182,9 +197,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
               buildLabel('Email'),
               buildTextField(
-                onChanged: (value) {
-                  email = value;
-                },
+                controller: _emailController,
+                onChanged: (value) {},
                 hint: 'example@email.com',
                 icon: Icons.email_outlined,
               ),
@@ -192,20 +206,18 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
               buildLabel('Phone Number'),
               buildTextField(
-                onChanged: (value) {
-                  phoneNumber = value;
-                },
+                controller: _phoneController,
+                onChanged: (value) {},
                 hint: '+263 ...',
-                icon: Icons.phone_outlined, 
+                icon: Icons.phone_outlined,
               ),
               const SizedBox(height: 20),
 
               if (isDoctor) ...[
                 buildLabel('Specialization'),
                 buildTextField(
-                  onChanged: (value) {
-                    specialization = value;
-                  },
+                  controller: _specializationController,
+                  onChanged: (value) {},
                   hint: 'Cardiologist',
                   icon: Icons.medical_services_outlined,
                 ),
@@ -214,9 +226,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
               buildLabel('Password'),
               buildTextField(
-                onChanged: (value) {
-                  password = value;
-                },
+                controller: _passwordController,
+                onChanged: (value) {},
                 hint: 'Create a password',
                 icon: Icons.lock_outline,
                 obscureText: true,
@@ -228,9 +239,77 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: () {
-                    print('email :$email');
-                    print('phone :$phoneNumber');
+                  onPressed: () async {
+                    // Validation
+                    if (_fullNameController.text.isEmpty ||
+                        _emailController.text.isEmpty ||
+                        _passwordController.text.isEmpty ||
+                        _phoneController.text.isEmpty ||
+                        (isDoctor && _specializationController.text.isEmpty)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Please fill in all fields',
+                            style: GoogleFonts.inter(color: Colors.white),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (!_emailController.text.contains('@')) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Please enter a valid email',
+                            style: GoogleFonts.inter(color: Colors.white),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+
+                    setState(() {
+                      isLoading = true;
+                    });
+
+                    try {
+                      final newUser = await _auth
+                          .createUserWithEmailAndPassword(
+                            email: _emailController.text.trim(),
+                            password: _passwordController.text,
+                          );
+                      if (newUser != null) {
+                        if (mounted) {
+                          Navigator.pushNamed(
+                            context,
+                            Homescreen.id,
+                            arguments: _image?.path,
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      print(e);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              e.toString(),
+                              style: GoogleFonts.inter(color: Colors.white),
+                            ),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    } finally {
+                      if (mounted) {
+                        setState(() {
+                          isLoading = false;
+                        });
+                      }
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF57E659),
@@ -240,13 +319,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     ),
                     elevation: 0,
                   ),
-                  child: Text(
-                    'Sign Up',
-                    style: GoogleFonts.inter(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  child: isLoading
+                      ? const CircularProgressIndicator(color: Colors.black)
+                      : Text(
+                          'Sign Up',
+                          style: GoogleFonts.inter(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                 ),
               ),
               const SizedBox(height: 24),

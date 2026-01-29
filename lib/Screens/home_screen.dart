@@ -1,7 +1,9 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'dart:ui';
+import 'dart:io';
 
 import 'package:zimdoctors/reusableWidgets/reusableElevatedBtn.dart';
 
@@ -15,6 +17,40 @@ class Homescreen extends StatefulWidget {
 }
 
 class _HomescreenState extends State<Homescreen> {
+  final _auth = FirebaseAuth.instance;
+  late User loggedInUser;
+  String? userPhoto;
+  String? localImagePath;
+
+  void getCurrentUser() {
+    final user = _auth.currentUser;
+
+    if (user != null) {
+      loggedInUser = user;
+      setState(() {
+        userPhoto = loggedInUser.photoURL;
+      });
+      print(loggedInUser.email);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    getCurrentUser();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args != null && args is String) {
+      setState(() {
+        localImagePath = args;
+      });
+    }
+  }
+
   int _selectedIndex = 1;
 
   @override
@@ -52,11 +88,19 @@ class _HomescreenState extends State<Homescreen> {
                                 hasDot: true,
                               ),
                               const SizedBox(width: 12),
-                              const CircleAvatar(
+                              CircleAvatar(
                                 radius: 22,
-                                backgroundImage: NetworkImage(
-                                  'https://i.pravatar.cc/150?img=11',
-                                ), // Placeholder
+                                backgroundImage:
+                                    (localImagePath != null &&
+                                        localImagePath!.isNotEmpty)
+                                    ? FileImage(File(localImagePath!))
+                                          as ImageProvider
+                                    : (userPhoto != null &&
+                                          userPhoto!.isNotEmpty)
+                                    ? NetworkImage(userPhoto!)
+                                    : const NetworkImage(
+                                        'https://i.pravatar.cc/150?img=3', // Default placeholder
+                                      ),
                               ),
                             ],
                           ),
@@ -113,18 +157,17 @@ class _HomescreenState extends State<Homescreen> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                           reusableElevatedBtn(btntext: 'Cardiologist'),
-                           SizedBox(width: 4),
-                           reusableElevatedBtn(btntext: 'Oncologist'),
-                           SizedBox(width: 4),
-                           reusableElevatedBtn(btntext: 'Dentist'),
-                           SizedBox(width: 4),
-                           reusableElevatedBtn(btntext: 'Optician'),
-                           SizedBox(width: 4),
-                           reusableElevatedBtn(btntext: 'Gynacologist'),
-                           SizedBox(width: 4),
-                           reusableElevatedBtn(btntext: 'Physician'),
-                          
+                            reusableElevatedBtn(btntext: 'Cardiologist'),
+                            SizedBox(width: 4),
+                            reusableElevatedBtn(btntext: 'Oncologist'),
+                            SizedBox(width: 4),
+                            reusableElevatedBtn(btntext: 'Dentist'),
+                            SizedBox(width: 4),
+                            reusableElevatedBtn(btntext: 'Optician'),
+                            SizedBox(width: 4),
+                            reusableElevatedBtn(btntext: 'Gynacologist'),
+                            SizedBox(width: 4),
+                            reusableElevatedBtn(btntext: 'Physician'),
                           ],
                         ),
                       ),
@@ -146,7 +189,7 @@ class _HomescreenState extends State<Homescreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                       color: Colors.lime,
+                        color: Colors.lime,
                         borderRadius: BorderRadius.circular(32),
                       ),
                       child: Column(
@@ -391,5 +434,3 @@ class _HomescreenState extends State<Homescreen> {
     );
   }
 }
-
-

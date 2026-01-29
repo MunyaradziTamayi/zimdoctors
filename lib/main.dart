@@ -1,11 +1,13 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:zimdoctors/Screens/homeScreen.dart';
-import 'package:zimdoctors/Screens/loginScreen.dart';
-import 'package:zimdoctors/Screens/registrationScreen.dart';
+import 'package:zimdoctors/Screens/home_screen.dart';
+import 'package:zimdoctors/Screens/login_screen.dart';
+import 'package:zimdoctors/Screens/registration_screen.dart';
 
-
-void main() {
-  runApp(const zimdoctors());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(zimdoctors());
 }
 
 class zimdoctors extends StatelessWidget {
@@ -15,18 +17,13 @@ class zimdoctors extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: ThemeData.dark().copyWith(
-        textTheme: TextTheme(
-          bodyMedium: TextStyle(
-            color:Colors.white60
-          )
-        )
+        textTheme: TextTheme(bodyMedium: TextStyle(color: Colors.white60)),
       ),
-      initialRoute:RegistrationScreen.id,
+      initialRoute: RegistrationScreen.id,
       routes: {
-          Homescreen.id : (context)=> Homescreen(),
-          LoginScreen.id:(context)=>LoginScreen(),
-          RegistrationScreen.id:(context)=>RegistrationScreen()
-  
+        Homescreen.id: (context) => Homescreen(),
+        LoginScreen.id: (context) => LoginScreen(),
+        RegistrationScreen.id: (context) => RegistrationScreen(),
       },
     );
   }
