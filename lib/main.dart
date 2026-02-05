@@ -1,9 +1,10 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:zimdoctors/Screens/ai_chat_screen.dart';
 import 'package:zimdoctors/Screens/home_screen.dart';
 import 'package:zimdoctors/Screens/login_screen.dart';
 import 'package:zimdoctors/Screens/registration_screen.dart';
-
+import 'package:zimdoctors/Screens/doctors_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
@@ -24,6 +25,8 @@ class zimdoctors extends StatelessWidget {
         Homescreen.id: (context) => Homescreen(),
         LoginScreen.id: (context) => LoginScreen(),
         RegistrationScreen.id: (context) => RegistrationScreen(),
+        DoctorsScreen.id: (context) => DoctorsScreen(),
+        ChatScreen.id: (context) => ChatScreen(),
       },
     );
   }

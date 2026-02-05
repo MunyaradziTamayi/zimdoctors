@@ -1,11 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import 'package:zimdoctors/Screens/ai_chat_screen.dart';
 import 'dart:ui';
 import 'dart:io';
-
 import 'package:zimdoctors/reusableWidgets/reusableElevatedBtn.dart';
+import 'package:zimdoctors/models/doctor.dart';
+import 'package:zimdoctors/Screens/doctors_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Homescreen extends StatefulWidget {
   static String id = '/home_screen';
@@ -22,13 +24,50 @@ class _HomescreenState extends State<Homescreen> {
   String? userPhoto;
   String? localImagePath;
 
+  final List<Doctor> savedDoctors = [
+    Doctor(
+      id: '1',
+      name: 'Dr. Matthew Clark',
+      specialty: 'General Practitioner\nDubai',
+      rating: 4.8,
+      image: 'https://i.pravatar.cc/150?img=11',
+      location: 'Dubai',
+      phoneNumber: '+1234567890',
+      experience: '10 years',
+      patients: 120,
+      fee: 50,
+      followUp: 30,
+      code: 'DOC001',
+      joined: '2020',
+      description:
+          'Experienced General Practitioner with a focus on patient-centered care.',
+    ),
+    Doctor(
+      id: '2',
+      name: 'Dr. James Gun',
+      specialty: 'Physiotherapist',
+      rating: 4.9,
+      image: 'https://i.pravatar.cc/150?img=12',
+      location: 'London',
+      phoneNumber: '+0987654321',
+      experience: '12 years',
+      patients: 200,
+      fee: 80,
+      followUp: 40,
+      code: 'DOC002',
+      joined: '2019',
+      description:
+          'Specialist in physiotherapy with a passion for rehabilitation and wellness.',
+    ),
+  ];
+
   void getCurrentUser() {
     final user = _auth.currentUser;
 
     if (user != null) {
-      loggedInUser = user;
       setState(() {
-        userPhoto = loggedInUser.photoURL;
+        loggedInUser = user;
+        
       });
       print(loggedInUser.email);
     }
@@ -185,96 +224,246 @@ class _HomescreenState extends State<Homescreen> {
                       right: 20,
                       bottom: 100,
                     ),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.lime,
-                        borderRadius: BorderRadius.circular(32),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Previous Feature Card
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: Colors.lime,
+                            borderRadius: BorderRadius.circular(32),
+                          ),
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const CircleAvatar(
-                                    radius: 28,
-                                    backgroundImage: NetworkImage(
-                                      'https://i.pravatar.cc/150?img=5',
-                                    ), // Doctor Image
+                                  Row(
+                                    children: [
+                                      const CircleAvatar(
+                                        radius: 28,
+                                        backgroundImage: NetworkImage(
+                                          'https://i.pravatar.cc/150?img=5',
+                                        ), // Doctor Image
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Available Today',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.black,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    'Available Today',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
-                                      color: Colors.black,
+                                  Row(
+                                    children: [
+                                      _buildActionIcon(Icons.favorite_border),
+                                      const SizedBox(width: 8),
+                                      _buildActionIcon(
+                                        Icons.chat_bubble_outline,
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              Text(
+                                'Dr. Rajaa Nourain',
+                                style: GoogleFonts.inter(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+
+                              // Time Slots
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  _buildTimeSlot('Today, 26 Jul'),
+                                  _buildTimeSlot('Today, 26 Jul'),
+                                  _buildTimeSlot('Today, 26 Jul'),
+                                  _buildTimeSlot('Today, 26 Jul'),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
+
+                              // View All Button
+                              SizedBox(
+                                width: double.infinity,
+                                height: 56,
+                                child: ElevatedButton(
+                                  onPressed: () {},
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.black,
+                                    foregroundColor: const Color(0xFF57E659),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(28),
                                     ),
                                   ),
-                                ],
-                              ),
-                              Row(
-                                children: [
-                                  _buildActionIcon(Icons.favorite_border),
-                                  const SizedBox(width: 8),
-                                  _buildActionIcon(Icons.chat_bubble_outline),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          Text(
-                            'Dr. Rajaa Nourain',
-                            style: GoogleFonts.inter(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Time Slots
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: [
-                              _buildTimeSlot('Today, 26 Jul'),
-                              _buildTimeSlot('Today, 26 Jul'),
-                              _buildTimeSlot('Today, 26 Jul'),
-                              _buildTimeSlot('Today, 26 Jul'),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
-
-                          // View All Button
-                          SizedBox(
-                            width: double.infinity,
-                            height: 56,
-                            child: ElevatedButton(
-                              onPressed: () {},
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.black,
-                                foregroundColor: const Color(0xFF57E659),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(28),
+                                  child: Text(
+                                    'View All Appointment',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
                               ),
+                            ],
+                          ),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Popular Doctors',
+                              style: GoogleFonts.inter(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pushNamed(context, DoctorsScreen.id);
+                              },
                               child: Text(
-                                'View All Appointment',
+                                'View all',
                                 style: GoogleFonts.inter(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: const Color(0xFF57E659),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: savedDoctors.map((doctor) {
+                            return Expanded(
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 12),
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1E1E1E),
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 24,
+                                          backgroundImage: NetworkImage(
+                                            doctor.image,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                doctor.name,
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      doctor.specialty,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w400,
+                                        color: Colors.grey[400],
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                '01 Aug',
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              Text(
+                                                'Time 11:AM',
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w400,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 32,
+                                          height: 32,
+                                          decoration: BoxDecoration(
+                                            color: Colors.black,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.arrow_outward,
+                                            color: Colors.white,
+                                            size: 16,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
                     ),
                   ),
                 ),
@@ -305,10 +494,14 @@ class _HomescreenState extends State<Homescreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildNavItem(0, Icons.home_filled),
-                          _buildNavItem(1, Icons.chat_rounded), // Active tab
-                          _buildNavItem(2, Icons.people_outline),
-                          _buildNavItem(3, Icons.list),
+                          _buildNavItem(0, Icons.home_filled, Homescreen.id),
+                          _buildNavItem(
+                            1,
+                            Icons.chat_rounded,
+                            ChatScreen.id,
+                          ), // Active tab
+                          _buildNavItem(2, Icons.people_outline, Homescreen.id),
+                          _buildNavItem(3, Icons.list, DoctorsScreen.id),
                         ],
                       ),
                     ),
@@ -414,10 +607,15 @@ class _HomescreenState extends State<Homescreen> {
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon) {
+  Widget _buildNavItem(int index, IconData icon, String routeName) {
     bool isSelected = _selectedIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
+      onTap: () {
+        setState(() {
+          Navigator.pushNamed(context, routeName);
+          _selectedIndex = index;
+        });
+      },
       child: Container(
         width: 50,
         height: 50,

@@ -17,6 +17,7 @@ class RegistrationScreen extends StatefulWidget {
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
   final _auth = FirebaseAuth.instance;
+  
 
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -189,7 +190,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               buildLabel('Full Name'),
               buildTextField(
                 controller: _fullNameController,
-                onChanged: (value) {},
+                onChanged: (value) {
+
+                },
                 hint: 'Munyaradzi Tamayi',
                 icon: Icons.person_outline,
               ),
@@ -273,6 +276,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
                     setState(() {
                       isLoading = true;
+                      
                     });
 
                     try {
