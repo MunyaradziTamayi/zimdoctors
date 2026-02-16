@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
-import 'package:zimdoctors/widgets/add_doctor_form.dart';
 
 class DoctorsScreen extends StatefulWidget {
   static const String id = '/doctors_screen';
@@ -177,18 +176,6 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
             },
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (context) => const AddDoctorForm(),
-          );
-        },
-        backgroundColor: const Color(0xFF57E659),
-        child: const Icon(Icons.add, color: Colors.black),
       ),
     );
   }

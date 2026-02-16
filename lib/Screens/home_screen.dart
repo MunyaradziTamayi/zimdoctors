@@ -8,6 +8,8 @@ import 'package:zimdoctors/reusableWidgets/reusableElevatedBtn.dart';
 import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/Screens/doctors_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:zimdoctors/services/doctor_service.dart';
+import 'package:zimdoctors/Screens/login_screen.dart';
 
 class Homescreen extends StatefulWidget {
   static String id = '/home_screen';
@@ -20,46 +22,10 @@ class Homescreen extends StatefulWidget {
 
 class _HomescreenState extends State<Homescreen> {
   final _auth = FirebaseAuth.instance;
+  final _doctorService = DoctorService();
   late User loggedInUser;
   String? userPhoto;
   String? localImagePath;
-
-  final List<Doctor> savedDoctors = [
-    Doctor(
-      id: '1',
-      name: 'Dr. Matthew Clark',
-      specialty: 'General Practitioner\nDubai',
-      rating: 4.8,
-      image: 'https://i.pravatar.cc/150?img=11',
-      location: 'Dubai',
-      phoneNumber: '+1234567890',
-      experience: '10 years',
-      patients: 120,
-      fee: 50,
-      followUp: 30,
-      code: 'DOC001',
-      joined: '2020',
-      description:
-          'Experienced General Practitioner with a focus on patient-centered care.',
-    ),
-    Doctor(
-      id: '2',
-      name: 'Dr. James Gun',
-      specialty: 'Physiotherapist',
-      rating: 4.9,
-      image: 'https://i.pravatar.cc/150?img=12',
-      location: 'London',
-      phoneNumber: '+0987654321',
-      experience: '12 years',
-      patients: 200,
-      fee: 80,
-      followUp: 40,
-      code: 'DOC002',
-      joined: '2019',
-      description:
-          'Specialist in physiotherapy with a passion for rehabilitation and wellness.',
-    ),
-  ];
 
   void getCurrentUser() {
     final user = _auth.currentUser;
@@ -67,7 +33,6 @@ class _HomescreenState extends State<Homescreen> {
     if (user != null) {
       setState(() {
         loggedInUser = user;
-        
       });
       print(loggedInUser.email);
     }
@@ -115,8 +80,61 @@ class _HomescreenState extends State<Homescreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           _buildCircleIcon(
-                            Icons.arrow_back,
-                            onTap: () => Navigator.pop(context),
+                            Icons.logout,
+                            onTap: () async {
+                              // Show confirmation dialog
+                              final shouldLogout = await showDialog<bool>(
+                                context: context,
+                                builder: (dialogContext) => AlertDialog(
+                                  backgroundColor: const Color(0xFF1E1E1E),
+                                  title: Text(
+                                    'Logout',
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  content: Text(
+                                    'Are you sure you want to logout?',
+                                    style: GoogleFonts.inter(
+                                      color: Colors.grey[400],
+                                    ),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(dialogContext, false),
+                                      child: Text(
+                                        'Cancel',
+                                        style: GoogleFonts.inter(
+                                          color: Colors.grey[400],
+                                        ),
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(dialogContext, true),
+                                      child: Text(
+                                        'Logout',
+                                        style: GoogleFonts.inter(
+                                          color: const Color(0xFF57E659),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (shouldLogout == true) {
+                                await _auth.signOut();
+                                if (mounted) {
+                                  Navigator.pushNamedAndRemoveUntil(
+                                    context,
+                                    LoginScreen.id,
+                                    (route) => false,
+                                  );
+                                }
+                              }
+                            },
                           ),
                           Row(
                             children: [
@@ -149,7 +167,7 @@ class _HomescreenState extends State<Homescreen> {
 
                       // Title
                       Text(
-                        'Book a Doctor',
+                        'Access all Doctors',
                         style: GoogleFonts.inter(
                           fontSize: 28,
                           fontWeight: FontWeight.w600,
@@ -189,27 +207,7 @@ class _HomescreenState extends State<Homescreen> {
                           _buildCircleIcon(Icons.tune, size: 50),
                         ],
                       ),
-                      const SizedBox(height: 24),
-
-                      // Date Filters
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            reusableElevatedBtn(btntext: 'Cardiologist'),
-                            SizedBox(width: 4),
-                            reusableElevatedBtn(btntext: 'Oncologist'),
-                            SizedBox(width: 4),
-                            reusableElevatedBtn(btntext: 'Dentist'),
-                            SizedBox(width: 4),
-                            reusableElevatedBtn(btntext: 'Optician'),
-                            SizedBox(width: 4),
-                            reusableElevatedBtn(btntext: 'Gynacologist'),
-                            SizedBox(width: 4),
-                            reusableElevatedBtn(btntext: 'Physician'),
-                          ],
-                        ),
-                      ),
+                      const SizedBox(height: 15),
                     ],
                   ),
                 ),
@@ -227,101 +225,242 @@ class _HomescreenState extends State<Homescreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Previous Feature Card
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Colors.lime,
-                            borderRadius: BorderRadius.circular(32),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const CircleAvatar(
-                                        radius: 28,
-                                        backgroundImage: NetworkImage(
-                                          'https://i.pravatar.cc/150?img=5',
-                                        ), // Doctor Image
+                        // Featured Doctor Card with Blur Effect
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(32),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(32),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.2),
+                                  width: 1.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.all(24),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(32),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Colors.white.withOpacity(0.1),
+                                      Colors.white.withOpacity(0.05),
+                                    ],
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    const SizedBox(height: 20),
+                                    // Animated Microphone Icon
+                                    TweenAnimationBuilder<double>(
+                                      tween: Tween(begin: 0.0, end: 1.0),
+                                      duration: const Duration(seconds: 2),
+                                      builder: (context, value, child) {
+                                        return Transform.scale(
+                                          scale: 0.95 + (0.1 * value),
+                                          child: Container(
+                                            width: 140,
+                                            height: 140,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              gradient: RadialGradient(
+                                                colors: [
+                                                  const Color(
+                                                    0xFF8B5CF6,
+                                                  ).withOpacity(0.3),
+                                                  const Color(
+                                                    0xFFEC4899,
+                                                  ).withOpacity(0.2),
+                                                  Colors.transparent,
+                                                ],
+                                                stops: const [0.0, 0.5, 1.0],
+                                              ),
+                                            ),
+                                            child: Center(
+                                              child: Container(
+                                                width: 100,
+                                                height: 100,
+                                                decoration: const BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  gradient: LinearGradient(
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                    colors: [
+                                                      Color(0xFF8B5CF6),
+                                                      Color(0xFFEC4899),
+                                                    ],
+                                                  ),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Color(0xFF8B5CF6),
+                                                      blurRadius: 30,
+                                                      spreadRadius: 5,
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: const Icon(
+                                                  Icons.mic_rounded,
+                                                  size: 50,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    const SizedBox(height: 32),
+                                    // AI Badge
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 8,
                                       ),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        'Available Today',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.black,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.3),
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                  Row(
-                                    children: [
-                                      _buildActionIcon(Icons.favorite_border),
-                                      const SizedBox(width: 8),
-                                      _buildActionIcon(
-                                        Icons.chat_bubble_outline,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 6,
+                                            height: 6,
+                                            decoration: const BoxDecoration(
+                                              color: Color(0xFF57E659),
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'AI-Powered Healthcare',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 20),
-                              Text(
-                                'Dr. Rajaa Nourain',
-                                style: GoogleFonts.inter(
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-
-                              // Time Slots
-                              Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
-                                children: [
-                                  _buildTimeSlot('Today, 26 Jul'),
-                                  _buildTimeSlot('Today, 26 Jul'),
-                                  _buildTimeSlot('Today, 26 Jul'),
-                                  _buildTimeSlot('Today, 26 Jul'),
-                                ],
-                              ),
-                              const SizedBox(height: 24),
-
-                              // View All Button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 56,
-                                child: ElevatedButton(
-                                  onPressed: () {},
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.black,
-                                    foregroundColor: const Color(0xFF57E659),
-                                    shape: RoundedRectangleBorder(
+                                    ),
+                                    const SizedBox(height: 24),
+                                    // Headline
+                                    Text(
+                                      'Chat with ZimDocs AI',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    // Description
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                      ),
+                                      child: Text(
+                                        'Instant medical advice and health guidance, just one click away.',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w400,
+                                          color: Colors.white.withOpacity(0.8),
+                                          height: 1.4,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 32),
+                                    // Start Chat Button
+                                    ClipRRect(
                                       borderRadius: BorderRadius.circular(28),
+                                      child: BackdropFilter(
+                                        filter: ImageFilter.blur(
+                                          sigmaX: 5,
+                                          sigmaY: 5,
+                                        ),
+                                        child: Container(
+                                          width: double.infinity,
+                                          height: 56,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(
+                                              0.1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              28,
+                                            ),
+                                            border: Border.all(
+                                              color: Colors.white.withOpacity(
+                                                0.2,
+                                              ),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: ElevatedButton(
+                                            onPressed: () {
+                                              Navigator.pushNamed(
+                                                context,
+                                                ChatScreen.id,
+                                              );
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              shadowColor: Colors.transparent,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(28),
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                const Icon(
+                                                  Icons.chat_bubble_rounded,
+                                                  color: Colors.white,
+                                                  size: 22,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Text(
+                                                  'Start Chat Now',
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                  child: Text(
-                                    'View All Appointment',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
+                                    const SizedBox(height: 20),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
                           ),
                         ),
+                        const SizedBox(height: 24),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -349,118 +488,157 @@ class _HomescreenState extends State<Homescreen> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        Row(
-                          children: savedDoctors.map((doctor) {
-                            return Expanded(
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 12),
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1E1E1E),
-                                  borderRadius: BorderRadius.circular(24),
+                        StreamBuilder<List<Doctor>>(
+                          stream: _doctorService.getDoctors(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF57E659),
                                 ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
+                              );
+                            }
+
+                            if (snapshot.hasError) {
+                              return Center(
+                                child: Text(
+                                  'Error loading doctors',
+                                  style: GoogleFonts.inter(color: Colors.white),
+                                ),
+                              );
+                            }
+
+                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                              return Center(
+                                child: Text(
+                                  'No doctors available',
+                                  style: GoogleFonts.inter(color: Colors.grey),
+                                ),
+                              );
+                            }
+
+                            final doctors = snapshot.data!.take(2).toList();
+
+                            return Row(
+                              children: doctors.map((doctor) {
+                                return Expanded(
+                                  child: Container(
+                                    margin: const EdgeInsets.only(right: 12),
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF1E1E1E),
+                                      borderRadius: BorderRadius.circular(24),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        CircleAvatar(
-                                          radius: 24,
-                                          backgroundImage: NetworkImage(
-                                            doctor.image,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                doctor.name,
-                                                style: GoogleFonts.inter(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.white,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
+                                        Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 24,
+                                              backgroundImage: NetworkImage(
+                                                doctor.image,
                                               ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      doctor.specialty,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w400,
-                                        color: Colors.grey[400],
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 6,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black,
-                                            borderRadius: BorderRadius.circular(
-                                              12,
                                             ),
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                '01 Aug',
-                                                style: GoogleFonts.inter(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.white,
-                                                ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    doctor.name,
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Colors.white,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ],
                                               ),
-                                              Text(
-                                                'Time 11:AM',
-                                                style: GoogleFonts.inter(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w400,
-                                                  color: Colors.grey,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                                            ),
+                                          ],
                                         ),
-                                        Container(
-                                          width: 32,
-                                          height: 32,
-                                          decoration: BoxDecoration(
-                                            color: Colors.black,
-                                            shape: BoxShape.circle,
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          doctor.specialty,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w400,
+                                            color: Colors.grey[400],
                                           ),
-                                          child: const Icon(
-                                            Icons.arrow_outward,
-                                            color: Colors.white,
-                                            size: 16,
-                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 6,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black,
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '01 Aug',
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    'Time 11:AM',
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.w400,
+                                                      color: Colors.grey,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Container(
+                                              width: 32,
+                                              height: 32,
+                                              decoration: BoxDecoration(
+                                                color: Colors.black,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.arrow_outward,
+                                                color: Colors.white,
+                                                size: 16,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),
-                                  ],
-                                ),
-                              ),
+                                  ),
+                                );
+                              }).toList(),
                             );
-                          }).toList(),
+                          },
                         ),
                         const SizedBox(height: 24),
                       ],
@@ -494,14 +672,7 @@ class _HomescreenState extends State<Homescreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildNavItem(0, Icons.home_filled, Homescreen.id),
-                          _buildNavItem(
-                            1,
-                            Icons.chat_rounded,
-                            ChatScreen.id,
-                          ), // Active tab
-                          _buildNavItem(2, Icons.people_outline, Homescreen.id),
-                          _buildNavItem(3, Icons.list, DoctorsScreen.id),
+                          _buildNavItem(2, Icons.people_outline, DoctorsScreen.id),
                         ],
                       ),
                     ),
@@ -570,6 +741,38 @@ class _HomescreenState extends State<Homescreen> {
           color: isActive ? Colors.black : Colors.white,
           fontWeight: FontWeight.w500,
           fontSize: 14,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlassIcon(IconData icon) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+      ),
+      child: Icon(icon, color: Colors.white, size: 20),
+    );
+  }
+
+  Widget _buildGlassTimeSlot(String time) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+      ),
+      child: Text(
+        time,
+        style: GoogleFonts.inter(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
         ),
       ),
     );

@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:zimdoctors/models/doctor.dart';
 
 class DoctorService {
@@ -28,6 +30,35 @@ class DoctorService {
     } catch (e) {
       print('Error getting doctor: $e');
       return null;
+    }
+  }
+
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+
+  // Upload profile image to Firebase Storage
+  Future<String> uploadProfileImage(File imageFile, String userId) async {
+    try {
+      final Reference ref = _storage.ref().child('doctor_images/$userId.jpg');
+      final UploadTask uploadTask = ref.putFile(imageFile);
+      final TaskSnapshot snapshot = await uploadTask;
+      final String downloadUrl = await snapshot.ref.getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      print('Error uploading image: $e');
+      throw e;
+    }
+  }
+
+  // Create a new doctor in Firestore
+  Future<void> createDoctor(Doctor doctor) async {
+    try {
+      await _firestore
+          .collection(_collectionName)
+          .doc(doctor.id)
+          .set(doctor.toMap());
+    } catch (e) {
+      print('Error creating doctor: $e');
+      throw e;
     }
   }
 

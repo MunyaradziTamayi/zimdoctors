@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:zimdoctors/Screens/home_screen.dart';
 import 'package:zimdoctors/Screens/login_screen.dart';
 import 'package:zimdoctors/reusableWidgets/reusableTextField.dart';
+import 'package:zimdoctors/widgets/add_doctor_form.dart';
 
 class RegistrationScreen extends StatefulWidget {
   static String id = 'registration_screen';
@@ -17,7 +18,6 @@ class RegistrationScreen extends StatefulWidget {
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
   final _auth = FirebaseAuth.instance;
-  
 
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -190,9 +190,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               buildLabel('Full Name'),
               buildTextField(
                 controller: _fullNameController,
-                onChanged: (value) {
-
-                },
+                onChanged: (value) {},
                 hint: 'Munyaradzi Tamayi',
                 icon: Icons.person_outline,
               ),
@@ -276,16 +274,35 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
                     setState(() {
                       isLoading = true;
-                      
                     });
 
                     try {
-                      final newUser = await _auth
-                          .createUserWithEmailAndPassword(
-                            email: _emailController.text.trim(),
-                            password: _passwordController.text,
+                      // If doctor, skip auth creation here and pass data to AddDoctorForm
+                      if (isDoctor) {
+                        if (mounted) {
+                          Navigator.pushNamed(
+                            context,
+                            AddDoctorForm.id,
+                            arguments: {
+                              'email': _emailController.text.trim(),
+                              'password': _passwordController.text,
+                              'name': _fullNameController.text.trim(),
+                              'phone': _phoneController.text.trim(),
+                              'specialty': _specializationController.text
+                                  .trim(),
+                              'imagePath': _image?.path,
+                            },
                           );
-                      if (newUser != null) {
+                        }
+                      } else {
+                        // Regular user creation
+                        final userCredential = await _auth
+                            .createUserWithEmailAndPassword(
+                              email: _emailController.text.trim(),
+                              password: _passwordController.text,
+                            );
+
+                        // Navigate to home
                         if (mounted) {
                           Navigator.pushNamed(
                             context,
