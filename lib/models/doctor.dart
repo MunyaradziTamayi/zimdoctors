@@ -13,6 +13,7 @@ class Doctor {
   final String code;
   final String joined;
   final String description;
+  final List<String> availableDates;
 
   Doctor({
     required this.id,
@@ -29,6 +30,7 @@ class Doctor {
     required this.location,
     required this.phoneNumber,
     required this.description,
+    required this.availableDates,
   });
 
   factory Doctor.fromMap(Map<String, dynamic> map, String documentId) {
@@ -47,6 +49,7 @@ class Doctor {
       code: map['code'] ?? '',
       joined: map['joined'] ?? '',
       description: map['description'] ?? '',
+      availableDates: List<String>.from(map['availableDates'] ?? []),
     );
   }
 
@@ -65,6 +68,7 @@ class Doctor {
       'code': code,
       'joined': joined,
       'description': description,
+      'availableDates': availableDates,
     };
   }
 }

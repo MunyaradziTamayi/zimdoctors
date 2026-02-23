@@ -107,6 +107,7 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
           code: docCode,
           joined: _joinedController.text.trim(),
           description: _descriptionController.text.trim(),
+          availableDates: [],
         );
 
         await _doctorService.createDoctor(newDoctor);

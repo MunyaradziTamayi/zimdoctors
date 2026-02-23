@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:zimdoctors/Screens/home_screen.dart';
+import 'package:zimdoctors/Screens/doctor_dashboard_screen.dart';
 import 'package:zimdoctors/Screens/registration_screen.dart';
 import 'package:zimdoctors/reusableWidgets/reusableTextField.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -305,7 +306,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       );
                       if (credential.user != null) {
                         _saveUserEmail();
-                        Navigator.pushNamed(context, Homescreen.id);
+                        if (isDoctor) {
+                          Navigator.pushNamed(
+                            context,
+                            DoctorDashboardScreen.id,
+                          );
+                        } else {
+                          Navigator.pushNamed(context, Homescreen.id);
+                        }
                       }
                     } catch (e) {
                       print(e);

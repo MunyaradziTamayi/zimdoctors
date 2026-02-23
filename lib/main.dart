@@ -7,6 +7,9 @@ import 'package:zimdoctors/Screens/registration_screen.dart';
 import 'package:zimdoctors/Screens/doctors_screen.dart';
 import 'package:zimdoctors/widgets/add_doctor_form.dart';
 import 'package:zimdoctors/Screens/welcome_screen.dart';
+import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
+import 'package:zimdoctors/Screens/doctor_dashboard_screen.dart';
+import 'package:zimdoctors/models/doctor.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +34,11 @@ class zimdoctors extends StatelessWidget {
         DoctorsScreen.id: (context) => DoctorsScreen(),
         ChatScreen.id: (context) => ChatScreen(),
         Welcomescreen.id: (context) => Welcomescreen(),
+        DoctorDashboardScreen.id: (context) => DoctorDashboardScreen(),
+        DoctorDetailScreen.id: (context) {
+          final doctor = ModalRoute.of(context)!.settings.arguments as Doctor;
+          return DoctorDetailScreen(doctor: doctor);
+        },
         AddDoctorForm.id: (context) {
           // Extract arguments using ModalRoute
           final args =
