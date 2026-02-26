@@ -8,6 +8,9 @@ class Booking {
   final String date;
   final String time;
   final String status; // 'pending', 'confirmed', 'cancelled'
+  final String paymentStatus; // 'unpaid', 'paid', 'pending'
+  final String? transactionRef;
+  final double amount;
   final DateTime createdAt;
 
   Booking({
@@ -18,6 +21,9 @@ class Booking {
     required this.date,
     required this.time,
     required this.status,
+    required this.paymentStatus,
+    this.transactionRef,
+    required this.amount,
     required this.createdAt,
   });
 
@@ -30,6 +36,9 @@ class Booking {
       date: map['date'] ?? '',
       time: map['time'] ?? '',
       status: map['status'] ?? 'pending',
+      paymentStatus: map['paymentStatus'] ?? 'unpaid',
+      transactionRef: map['transactionRef'],
+      amount: (map['amount'] as num?)?.toDouble() ?? 0.0,
       createdAt: map['createdAt'] is Timestamp
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
@@ -44,6 +53,9 @@ class Booking {
       'date': date,
       'time': time,
       'status': status,
+      'paymentStatus': paymentStatus,
+      'transactionRef': transactionRef,
+      'amount': amount,
       'createdAt': createdAt,
     };
   }

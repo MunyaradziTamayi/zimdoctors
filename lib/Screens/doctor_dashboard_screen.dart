@@ -144,7 +144,13 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
         children: [
           CircleAvatar(
             radius: 30,
-            backgroundImage: NetworkImage(_currentDoctor!.image),
+            backgroundColor: const Color(0xFF1E1E1E),
+            backgroundImage: _currentDoctor!.image.isNotEmpty
+                ? NetworkImage(_currentDoctor!.image)
+                : null,
+            child: _currentDoctor!.image.isEmpty
+                ? const Icon(Icons.person, size: 30, color: Colors.grey)
+                : null,
           ),
           const SizedBox(width: 15),
           Expanded(

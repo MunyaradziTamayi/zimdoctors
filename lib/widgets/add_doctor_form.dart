@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:zimdoctors/Screens/home_screen.dart';
 import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
@@ -35,11 +36,14 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
   final _auth = FirebaseAuth.instance;
   bool _isLoading = false;
 
+  // Files & Media
+  File? _imageFile;
+  final ImagePicker _picker = ImagePicker();
+
   // Controllers
   late TextEditingController _nameController;
   late TextEditingController _specialtyController;
   final _ratingController = TextEditingController(text: '4.5');
-  final _imageController = TextEditingController(); // For URL if needed
   final _locationController = TextEditingController();
   late TextEditingController _phoneController;
   final _experienceController = TextEditingController();
@@ -59,10 +63,38 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
     _specialtyController = TextEditingController(text: widget.specialty ?? '');
     _phoneController = TextEditingController(text: widget.phone ?? '');
     _codeController.text = 'DOC...'; // Placeholder until auth
+    if (widget.imagePath != null) {
+      _imageFile = File(widget.imagePath!);
+    }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1000,
+        maxHeight: 1000,
+        imageQuality: 85,
+      );
+      if (pickedFile != null) {
+        setState(() {
+          _imageFile = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking image: $e');
+    }
   }
 
   Future<void> _submitForm() async {
     if (_formKey.currentState!.validate()) {
+      if (_imageFile == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a profile image')),
+        );
+        return;
+      }
+
       setState(() => _isLoading = true);
 
       try {
@@ -79,17 +111,11 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
         // Update code with actual UID
         final docCode = 'DOC${uid.substring(0, 5).toUpperCase()}';
 
-        String imageUrl = '';
-
-        // 2. Upload image if path is provided
-        if (widget.imagePath != null && widget.imagePath!.isNotEmpty) {
-          imageUrl = await _doctorService.uploadProfileImage(
-            File(widget.imagePath!),
-            uid,
-          );
-        } else if (_imageController.text.isNotEmpty) {
-          imageUrl = _imageController.text.trim();
-        }
+        // 2. Upload image
+        final imageUrl = await _doctorService.uploadProfileImage(
+          _imageFile!,
+          uid,
+        );
 
         // 3. Create Doctor in Firestore
         final newDoctor = Doctor(
@@ -141,7 +167,6 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
     _nameController.dispose();
     _specialtyController.dispose();
     _ratingController.dispose();
-    _imageController.dispose();
     _locationController.dispose();
     _phoneController.dispose();
     _experienceController.dispose();
@@ -164,7 +189,7 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
           style: GoogleFonts.inter(color: Colors.white),
         ),
         backgroundColor: Colors.black,
-        iconTheme: IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -174,6 +199,47 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Center(
+                  child: GestureDetector(
+                    onTap: _pickImage,
+                    child: Stack(
+                      children: [
+                        CircleAvatar(
+                          radius: 60,
+                          backgroundColor: const Color(0xFF1E1E1E),
+                          backgroundImage: _imageFile != null
+                              ? FileImage(_imageFile!)
+                              : null,
+                          child: _imageFile == null
+                              ? const Icon(
+                                  Icons.person,
+                                  size: 60,
+                                  color: Colors.grey,
+                                )
+                              : null,
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF57E659),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.black,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
                 Text(
                   'Add New Doctor',
                   style: GoogleFonts.inter(
@@ -183,37 +249,6 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
                   ),
                 ),
                 const SizedBox(height: 20),
-
-                _buildTextField(label: 'Name', controller: _nameController),
-                _buildTextField(
-                  label: 'Specialty',
-                  controller: _specialtyController,
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildTextField(
-                        label: 'Rating',
-                        controller: _ratingController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildTextField(
-                        label: 'Code',
-                        controller: _codeController,
-                        readOnly: true, // Auto-generated
-                      ),
-                    ),
-                  ],
-                ),
-                // Conditional Image Field
-                if (widget.imagePath == null)
-                  _buildTextField(
-                    label: 'Image URL',
-                    controller: _imageController,
-                  ),
 
                 _buildTextField(
                   label: 'Location',

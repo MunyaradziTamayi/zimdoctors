@@ -35,6 +35,7 @@ class _HomescreenState extends State<Homescreen> {
     if (user != null) {
       setState(() {
         loggedInUser = user;
+        userPhoto = user.photoURL;
       });
       print(loggedInUser.email);
     }
@@ -149,6 +150,7 @@ class _HomescreenState extends State<Homescreen> {
                               const SizedBox(width: 12),
                               CircleAvatar(
                                 radius: 22,
+                                backgroundColor: const Color(0xFF1E1E1E),
                                 backgroundImage:
                                     (localImagePath != null &&
                                         localImagePath!.isNotEmpty)
@@ -157,9 +159,17 @@ class _HomescreenState extends State<Homescreen> {
                                     : (userPhoto != null &&
                                           userPhoto!.isNotEmpty)
                                     ? NetworkImage(userPhoto!)
-                                    : const NetworkImage(
-                                        'https://i.pravatar.cc/150?img=3', // Default placeholder
-                                      ),
+                                    : null,
+                                child:
+                                    (localImagePath == null ||
+                                            localImagePath!.isEmpty) &&
+                                        (userPhoto == null ||
+                                            userPhoto!.isEmpty)
+                                    ? const Icon(
+                                        Icons.person,
+                                        color: Colors.grey,
+                                      )
+                                    : null,
                               ),
                             ],
                           ),
@@ -584,40 +594,45 @@ class _HomescreenState extends State<Homescreen> {
                                       ),
                                       child: Column(
                                         crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                            CrossAxisAlignment.center,
                                         children: [
-                                          Row(
-                                            children: [
-                                              CircleAvatar(
-                                                radius: 24,
-                                                backgroundImage: NetworkImage(
-                                                  doctor.image,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      doctor.name,
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 14,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color: Colors.white,
-                                                      ),
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
+                                          CircleAvatar(
+                                            radius: 35,
+                                            backgroundColor: const Color(
+                                              0xFF2C2C2C,
+                                            ),
+                                            backgroundImage:
+                                                doctor.image.isNotEmpty
+                                                ? NetworkImage(doctor.image)
+                                                : null,
+                                            child: doctor.image.isEmpty
+                                                ? const Icon(
+                                                    Icons.person,
+                                                    size: 35,
+                                                    color: Colors.white,
+                                                  )
+                                                : null,
+                                            onBackgroundImageError:
+                                                (exception, stackTrace) =>
+                                                    const Icon(
+                                                      Icons.person,
+                                                      size: 35,
+                                                      color: Colors.white,
                                                     ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
                                           ),
-                                          const SizedBox(height: 12),
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            doctor.name,
+                                            style: GoogleFonts.inter(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.white,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          const SizedBox(height: 4),
                                           Text(
                                             doctor.specialty,
                                             style: GoogleFonts.inter(
@@ -627,9 +642,12 @@ class _HomescreenState extends State<Homescreen> {
                                             ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
                                           ),
-                                          const SizedBox(height: 4),
+                                          const SizedBox(height: 12),
                                           Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
                                             children: [
                                               Icon(
                                                 Icons.location_on,
@@ -637,7 +655,7 @@ class _HomescreenState extends State<Homescreen> {
                                                 color: Colors.grey[500],
                                               ),
                                               const SizedBox(width: 4),
-                                              Expanded(
+                                              Flexible(
                                                 child: Text(
                                                   doctor.location,
                                                   style: GoogleFonts.inter(
@@ -651,8 +669,10 @@ class _HomescreenState extends State<Homescreen> {
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 4),
+                                          const SizedBox(height: 6),
                                           Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
                                             children: [
                                               Icon(
                                                 Icons.monetization_on,
@@ -670,7 +690,7 @@ class _HomescreenState extends State<Homescreen> {
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 16),
+                                          const SizedBox(height: 20),
                                           Row(
                                             mainAxisAlignment:
                                                 MainAxisAlignment.spaceBetween,
@@ -678,7 +698,7 @@ class _HomescreenState extends State<Homescreen> {
                                               Container(
                                                 padding:
                                                     const EdgeInsets.symmetric(
-                                                      horizontal: 12,
+                                                      horizontal: 10,
                                                       vertical: 6,
                                                     ),
                                                 decoration: BoxDecoration(
@@ -718,7 +738,7 @@ class _HomescreenState extends State<Homescreen> {
                                                           ? 'Available'
                                                           : 'No Slots',
                                                       style: GoogleFonts.inter(
-                                                        fontSize: 10,
+                                                        fontSize: 9,
                                                         fontWeight:
                                                             FontWeight.w400,
                                                         color: Colors.grey,
@@ -730,7 +750,7 @@ class _HomescreenState extends State<Homescreen> {
                                               Container(
                                                 width: 32,
                                                 height: 32,
-                                                decoration: BoxDecoration(
+                                                decoration: const BoxDecoration(
                                                   color: Colors.black,
                                                   shape: BoxShape.circle,
                                                 ),

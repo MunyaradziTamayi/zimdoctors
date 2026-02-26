@@ -37,17 +37,59 @@ class DoctorService {
 
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  // Upload profile image to Firebase Storage
+  // Upload profile image to Firebase Storage for doctors
   Future<String> uploadProfileImage(File imageFile, String userId) async {
+    print('Starting doctor image upload for $userId');
+    if (!await imageFile.exists()) {
+      print('Error: Image file does not exist at path: ${imageFile.path}');
+      throw Exception('Image file not found');
+    }
+
     try {
       final Reference ref = _storage.ref().child('doctor_images/$userId.jpg');
-      final UploadTask uploadTask = ref.putFile(imageFile);
+      final metadata = SettableMetadata(contentType: 'image/jpeg');
+
+      final UploadTask uploadTask = ref.putFile(imageFile, metadata);
+
       final TaskSnapshot snapshot = await uploadTask;
-      final String downloadUrl = await snapshot.ref.getDownloadURL();
-      return downloadUrl;
+      if (snapshot.state == TaskState.success) {
+        final String downloadUrl = await snapshot.ref.getDownloadURL();
+        print('Doctor image uploaded successfully: $downloadUrl');
+        return downloadUrl;
+      } else {
+        throw Exception('Upload failed with state: ${snapshot.state}');
+      }
     } catch (e) {
-      print('Error uploading image: $e');
-      throw e;
+      print('Error uploading doctor image: $e');
+      rethrow;
+    }
+  }
+
+  // Upload profile image to Firebase Storage for regular users
+  Future<String> uploadUserProfileImage(File imageFile, String userId) async {
+    print('Starting user image upload for $userId');
+    if (!await imageFile.exists()) {
+      print('Error: Image file does not exist at path: ${imageFile.path}');
+      throw Exception('Image file not found');
+    }
+
+    try {
+      final Reference ref = _storage.ref().child('user_images/$userId.jpg');
+      final metadata = SettableMetadata(contentType: 'image/jpeg');
+
+      final UploadTask uploadTask = ref.putFile(imageFile, metadata);
+
+      final TaskSnapshot snapshot = await uploadTask;
+      if (snapshot.state == TaskState.success) {
+        final String downloadUrl = await snapshot.ref.getDownloadURL();
+        print('User image uploaded successfully: $downloadUrl');
+        return downloadUrl;
+      } else {
+        throw Exception('Upload failed with state: ${snapshot.state}');
+      }
+    } catch (e) {
+      print('Error uploading user image: $e');
+      rethrow;
     }
   }
 

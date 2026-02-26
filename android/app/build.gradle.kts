@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.tamayi.zimdoctors.zimdoctors"
+    namespace = "com.tamayi.zimdoctors"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -46,6 +46,6 @@ flutter {
 
 dependencies {
   // Import the Firebase BoM
-  implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
+implementation(platform("com.google.firebase:firebase-bom:34.9.0"))
 
 }

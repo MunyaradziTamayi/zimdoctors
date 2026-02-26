@@ -113,7 +113,8 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
               crossAxisCount: 2,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio: 0.75, // Increased height for more details
+              childAspectRatio:
+                  0.68, // Adjusted height for more centered details
             ),
             itemCount: doctors.length,
             itemBuilder: (context, index) {
@@ -133,59 +134,68 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundImage: NetworkImage(doctor.image),
-                            onBackgroundImageError: (_, __) =>
-                                const Icon(Icons.person),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  doctor.name,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  doctor.specialty,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    color: const Color(0xFF57E659),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
+                      const SizedBox(height: 8),
+                      CircleAvatar(
+                        radius: 35,
+                        backgroundColor: const Color(0xFF2C2C2C),
+                        backgroundImage: doctor.image.isNotEmpty
+                            ? NetworkImage(doctor.image)
+                            : null,
+                        child: doctor.image.isEmpty
+                            ? const Icon(
+                                Icons.person,
+                                size: 35,
+                                color: Colors.white,
+                              )
+                            : null,
+                        onBackgroundImageError: (exception, stackTrace) =>
+                            const Icon(
+                              Icons.person,
+                              size: 35,
+                              color: Colors.white,
                             ),
-                          ),
-                        ],
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
+                      Text(
+                        doctor.name,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        doctor.specialty,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF57E659),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
                             Icons.location_on,
-                            size: 12,
+                            size: 11,
                             color: Colors.grey[500],
                           ),
                           const SizedBox(width: 4),
-                          Expanded(
+                          Flexible(
                             child: Text(
                               doctor.location,
                               style: GoogleFonts.inter(
-                                fontSize: 11,
+                                fontSize: 10,
                                 color: Colors.grey[400],
                               ),
                               maxLines: 1,
@@ -196,17 +206,18 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
                             Icons.monetization_on,
-                            size: 12,
+                            size: 11,
                             color: Colors.amber[400],
                           ),
                           const SizedBox(width: 4),
                           Text(
                             'Fee: \$${doctor.fee}',
                             style: GoogleFonts.inter(
-                              fontSize: 11,
+                              fontSize: 10,
                               color: Colors.amber[400],
                               fontWeight: FontWeight.w600,
                             ),
@@ -238,7 +249,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                                         )
                                       : 'N/A',
                                   style: GoogleFonts.inter(
-                                    fontSize: 10,
+                                    fontSize: 9,
                                     fontWeight: FontWeight.w600,
                                     color: Colors.white,
                                   ),
@@ -248,7 +259,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                                       ? 'Available'
                                       : 'No Slots',
                                   style: GoogleFonts.inter(
-                                    fontSize: 9,
+                                    fontSize: 8,
                                     color: Colors.grey,
                                   ),
                                 ),
