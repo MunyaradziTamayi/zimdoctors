@@ -14,6 +14,7 @@ class Doctor {
   final String joined;
   final String description;
   final List<String> availableDates;
+  final Map<String, List<String>> availabilitySlots;
 
   Doctor({
     required this.id,
@@ -31,9 +32,17 @@ class Doctor {
     required this.phoneNumber,
     required this.description,
     required this.availableDates,
+    required this.availabilitySlots,
   });
 
   factory Doctor.fromMap(Map<String, dynamic> map, String documentId) {
+    Map<String, List<String>> slots = {};
+    if (map['availabilitySlots'] != null) {
+      (map['availabilitySlots'] as Map<String, dynamic>).forEach((key, value) {
+        slots[key] = List<String>.from(value);
+      });
+    }
+
     return Doctor(
       id: documentId,
       name: map['name'] ?? '',
@@ -50,6 +59,7 @@ class Doctor {
       joined: map['joined'] ?? '',
       description: map['description'] ?? '',
       availableDates: List<String>.from(map['availableDates'] ?? []),
+      availabilitySlots: slots,
     );
   }
 
@@ -69,6 +79,7 @@ class Doctor {
       'joined': joined,
       'description': description,
       'availableDates': availableDates,
+      'availabilitySlots': availabilitySlots,
     };
   }
 }

@@ -8,6 +8,7 @@ import 'package:zimdoctors/Screens/login_screen.dart';
 import 'package:zimdoctors/reusableWidgets/reusableTextField.dart';
 import 'package:zimdoctors/widgets/add_doctor_form.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
+import 'package:zimdoctors/services/user_service.dart';
 
 class RegistrationScreen extends StatefulWidget {
   static String id = 'registration_screen';
@@ -167,14 +168,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           backgroundColor: const Color(0xFF1E1E1E),
                           backgroundImage: _image != null
                               ? FileImage(_image!)
-                              : null,
-                          child: _image == null
-                              ? const Icon(
-                                  Icons.person,
-                                  size: 50,
-                                  color: Colors.grey,
-                                )
-                              : null,
+                              : const NetworkImage(
+                                      'https://cdn-icons-png.flaticon.com/512/3135/3135715.png')
+                                  as ImageProvider,
+                          child: null,
                         ),
                         Positioned(
                           bottom: 0,
@@ -317,18 +314,31 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
                           final user = userCredential.user;
                           if (user != null) {
-                            String? photoUrl;
-                            // Upload image if selected
+                            String photoUrl = '';
+                            // Upload image ONLY if selected
                             if (_image != null) {
-                              photoUrl = await DoctorService()
-                                  .uploadUserProfileImage(_image!, user.uid);
+                              try {
+                                photoUrl = await UserService()
+                                    .uploadUserProfileImage(_image!, user.uid);
+                              } catch (e) {
+                                print('Storage upload skipped/failed: $e');
+                                // Continue without photo
+                              }
                             }
 
-                            // Update profile info
+                            // Save profile to Firestore
+                            await UserService().saveUserProfile(
+                              uid: user.uid,
+                              name: _fullNameController.text.trim(),
+                              email: _emailController.text.trim(),
+                              photoUrl: photoUrl,
+                            );
+
+                            // Update Auth profile as well
                             await user.updateDisplayName(
                               _fullNameController.text.trim(),
                             );
-                            if (photoUrl != null) {
+                            if (photoUrl.isNotEmpty) {
                               await user.updatePhotoURL(photoUrl);
                             }
                           }

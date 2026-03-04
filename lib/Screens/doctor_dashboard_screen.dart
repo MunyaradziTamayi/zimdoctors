@@ -6,6 +6,10 @@ import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/models/booking.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
 import 'package:intl/intl.dart';
+import 'package:zimdoctors/models/notification.dart';
+import 'package:zimdoctors/services/notification_service.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import 'dart:ui';
 
 class DoctorDashboardScreen extends StatefulWidget {
@@ -17,26 +21,48 @@ class DoctorDashboardScreen extends StatefulWidget {
   State<DoctorDashboardScreen> createState() => _DoctorDashboardScreenState();
 }
 
-class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
+class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
+    with SingleTickerProviderStateMixin {
   final _doctorService = DoctorService();
+  final _notificationService = NotificationService();
   final _auth = FirebaseAuth.instance;
+  final _picker = ImagePicker();
   Doctor? _currentDoctor;
   bool _isLoading = true;
+  File? _selectedImage;
+  late TabController _tabController;
 
   final _descController = TextEditingController();
   final _feeController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _specialtyController = TextEditingController();
+  final _expController = TextEditingController();
+  final _locationController = TextEditingController();
+  final _phoneController = TextEditingController();
+
   List<String> _tempAvailableDates = [];
+  Map<String, List<String>> _tempAvailabilitySlots = {};
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _loadDoctorData();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _descController.dispose();
     _feeController.dispose();
+    _nameController.dispose();
+    _specialtyController.dispose();
+    _expController.dispose();
+    _locationController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -49,7 +75,15 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
         if (doctor != null) {
           _descController.text = doctor.description;
           _feeController.text = doctor.fee.toString();
+          _nameController.text = doctor.name;
+          _specialtyController.text = doctor.specialty;
+          _expController.text = doctor.experience;
+          _locationController.text = doctor.location;
+          _phoneController.text = doctor.phoneNumber;
           _tempAvailableDates = List.from(doctor.availableDates);
+          _tempAvailabilitySlots = Map.from(doctor.availabilitySlots.map(
+            (key, value) => MapEntry(key, List<String>.from(value)),
+          ));
         }
       });
     }
@@ -88,51 +122,50 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
       );
     }
 
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
-          children: [
-            // Background Decoration
-            Positioned(
-              top: -100,
-              right: -50,
-              child: Container(
-                width: 300,
-                height: 300,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF57E659).withOpacity(0.1),
-                ),
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Background Decoration
+          Positioned(
+            top: -100,
+            right: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF57E659).withOpacity(0.1),
               ),
             ),
-            SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(),
-                  const TabBar(
-                    indicatorColor: Color(0xFF57E659),
-                    tabs: [
-                      Tab(text: 'Bookings'),
-                      Tab(text: 'Profile'),
-                      Tab(text: 'Stats'),
+          ),
+          SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(),
+                TabBar(
+                  controller: _tabController,
+                  indicatorColor: const Color(0xFF57E659),
+                  tabs: const [
+                    Tab(text: 'Bookings'),
+                    Tab(text: 'Profile'),
+                    Tab(text: 'Stats'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildBookingsTab(),
+                      _buildProfileTab(),
+                      _buildStatsTab(),
                     ],
                   ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        _buildBookingsTab(),
-                        _buildProfileTab(),
-                        _buildStatsTab(),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -142,16 +175,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
       padding: const EdgeInsets.all(20.0),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor: const Color(0xFF1E1E1E),
-            backgroundImage: _currentDoctor!.image.isNotEmpty
-                ? NetworkImage(_currentDoctor!.image)
-                : null,
-            child: _currentDoctor!.image.isEmpty
-                ? const Icon(Icons.person, size: 30, color: Colors.grey)
-                : null,
-          ),
+          _buildProfileImage(),
           const SizedBox(width: 15),
           Expanded(
             child: Column(
@@ -175,6 +199,45 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
               ],
             ),
           ),
+          StreamBuilder<List<SystemNotification>>(
+            stream: _notificationService.getActiveNotifications(_currentDoctor!.id),
+            builder: (context, snapshot) {
+              int count = snapshot.data?.length ?? 0;
+              return Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                    onPressed: () => _showNotifications(context),
+                  ),
+                  if (count > 0)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          '$count',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent),
             onPressed: () async {
@@ -187,6 +250,50 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildProfileImage() {
+    return Stack(
+      children: [
+        CircleAvatar(
+          radius: 30,
+          backgroundColor: const Color(0xFF1E1E1E),
+          backgroundImage: _selectedImage != null
+              ? FileImage(_selectedImage!)
+              : (_currentDoctor!.image.isNotEmpty
+                  ? NetworkImage(_currentDoctor!.image)
+                  : null) as ImageProvider?,
+          child: _selectedImage == null && _currentDoctor!.image.isEmpty
+              ? const Icon(Icons.person, size: 30, color: Colors.grey)
+              : null,
+        ),
+        if (_tabController.index == 1) // Only show in profile tab
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: GestureDetector(
+              onTap: _pickImage,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF57E659),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.edit, size: 12, color: Colors.black),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _pickImage() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      setState(() {
+        _selectedImage = File(image.path);
+      });
+    }
   }
 
   Widget _buildBookingsTab() {
@@ -309,22 +416,42 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildSectionTitle('Full Name'),
+          _buildTextField(_nameController),
+          const SizedBox(height: 20),
+          _buildSectionTitle('Specialty'),
+          _buildTextField(_specialtyController),
+          const SizedBox(height: 20),
+          _buildSectionTitle('Experience'),
+          _buildTextField(_expController),
+          const SizedBox(height: 20),
+          _buildSectionTitle('Location'),
+          _buildTextField(_locationController),
+          const SizedBox(height: 20),
+          _buildSectionTitle('Phone Number'),
+          _buildTextField(_phoneController),
+          const SizedBox(height: 20),
           _buildSectionTitle('Profile Description'),
           _buildTextField(_descController, maxLines: 5),
           const SizedBox(height: 20),
           _buildSectionTitle('Consultation Fee (\$)'),
           _buildTextField(_feeController, keyboardType: TextInputType.number),
           const SizedBox(height: 20),
-          _buildSectionTitle('Available Dates'),
+          _buildSectionTitle('Available Dates & Slots'),
           Wrap(
             spacing: 8,
             children: [
               ..._tempAvailableDates.map(
-                (date) => Chip(
-                  label: Text(date, style: const TextStyle(fontSize: 12)),
+                (date) => InputChip(
+                  label: Text(
+                    '$date (${_tempAvailabilitySlots[date]?.length ?? 0} slots)',
+                    style: const TextStyle(fontSize: 12, color: Colors.white),
+                  ),
+                  onPressed: () => _showSlotsDialog(date),
                   onDeleted: () {
                     setState(() {
                       _tempAvailableDates.remove(date);
+                      _tempAvailabilitySlots.remove(date);
                     });
                   },
                   backgroundColor: const Color(0xFF1E1E1E),
@@ -332,7 +459,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                 ),
               ),
               ActionChip(
-                label: const Icon(Icons.add, size: 16),
+                label: const Icon(Icons.add, size: 16, color: Colors.black),
                 onPressed: () async {
                   final DateTime? pickedDate = await showDatePicker(
                     context: context,
@@ -347,7 +474,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                     if (!_tempAvailableDates.contains(formattedDate)) {
                       setState(() {
                         _tempAvailableDates.add(formattedDate);
+                        _tempAvailabilitySlots[formattedDate] = [];
                       });
+                      _showSlotsDialog(formattedDate);
                     }
                   }
                 },
@@ -362,22 +491,37 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
             child: ElevatedButton(
               onPressed: () async {
                 setState(() => _isLoading = true);
+                
+                String imageUrl = _currentDoctor!.image;
+                if (_selectedImage != null) {
+                  try {
+                    imageUrl = await _doctorService.uploadProfileImage(
+                      _selectedImage!, 
+                      _currentDoctor!.id
+                    );
+                  } catch (e) {
+                    print('Doctor profile image update failed: $e');
+                    // Notification or snackbar could go here, but we continue with old image
+                  }
+                }
+
                 final updatedDoctor = Doctor(
                   id: _currentDoctor!.id,
-                  name: _currentDoctor!.name,
-                  specialty: _currentDoctor!.specialty,
+                  name: _nameController.text,
+                  specialty: _specialtyController.text,
                   rating: _currentDoctor!.rating,
-                  image: _currentDoctor!.image,
-                  experience: _currentDoctor!.experience,
+                  image: imageUrl,
+                  experience: _expController.text,
                   patients: _currentDoctor!.patients,
                   fee: int.tryParse(_feeController.text) ?? _currentDoctor!.fee,
                   followUp: _currentDoctor!.followUp,
                   code: _currentDoctor!.code,
                   joined: _currentDoctor!.joined,
-                  location: _currentDoctor!.location,
-                  phoneNumber: _currentDoctor!.phoneNumber,
+                  location: _locationController.text,
+                  phoneNumber: _phoneController.text,
                   description: _descController.text,
                   availableDates: _tempAvailableDates,
+                  availabilitySlots: _tempAvailabilitySlots,
                 );
                 await _doctorService.updateDoctor(updatedDoctor);
                 await _loadDoctorData();
@@ -404,6 +548,170 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showNotifications(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.black,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) {
+        return DefaultTabController(
+          length: 2,
+          child: Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                const TabBar(
+                  indicatorColor: Color(0xFF57E659),
+                  tabs: [
+                    Tab(text: 'Active'),
+                    Tab(text: 'History'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      _buildNotificationList(isActive: true),
+                      _buildNotificationList(isActive: false),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildNotificationList({required bool isActive}) {
+    return StreamBuilder<List<SystemNotification>>(
+      stream: isActive
+          ? _notificationService.getActiveNotifications(_currentDoctor!.id)
+          : _notificationService.getNotificationHistory(_currentDoctor!.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: Color(0xFF57E659)));
+        }
+        final notifications = snapshot.data ?? [];
+        if (notifications.isEmpty) {
+          return Center(
+            child: Text(
+              'No notifications',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.only(top: 20),
+          itemCount: notifications.length,
+          itemBuilder: (context, index) {
+            final notification = notifications[index];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                tileColor: const Color(0xFF1E1E1E),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                title: Text(
+                  notification.title,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  notification.body,
+                  style: TextStyle(color: Colors.grey[400]),
+                ),
+                trailing: isActive 
+                  ? IconButton(
+                      icon: const Icon(Icons.check_circle_outline, color: Color(0xFF57E659)),
+                      onPressed: () => _notificationService.moveToHistory(notification.id),
+                    )
+                  : null,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showSlotsDialog(String date) async {
+    final List<String> allSlots = [
+      '08:00 - 09:00',
+      '09:00 - 10:00',
+      '10:00 - 11:00',
+      '11:00 - 12:00',
+      '12:00 - 13:00',
+      '13:00 - 14:00',
+      '14:00 - 15:00',
+      '15:00 - 16:00',
+      '16:00 - 17:00',
+      '17:00 - 18:00',
+    ];
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              title: Text(
+                'Slots for $date',
+                style: GoogleFonts.inter(color: Colors.white),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: allSlots.length,
+                  itemBuilder: (context, index) {
+                    final slot = allSlots[index];
+                    final isSelected =
+                        _tempAvailabilitySlots[date]?.contains(slot) ?? false;
+                    return CheckboxListTile(
+                      title: Text(
+                        slot,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      value: isSelected,
+                      activeColor: const Color(0xFF57E659),
+                      checkColor: Colors.black,
+                      onChanged: (bool? value) {
+                        setState(() {
+                          if (value == true) {
+                            _tempAvailabilitySlots[date] ??= [];
+                            if (!_tempAvailabilitySlots[date]!.contains(slot)) {
+                              _tempAvailabilitySlots[date]!.add(slot);
+                            }
+                          } else {
+                            _tempAvailabilitySlots[date]?.remove(slot);
+                          }
+                        });
+                        setModalState(() {});
+                      },
+                    );
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    'Done',
+                    style: TextStyle(color: Color(0xFF57E659)),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

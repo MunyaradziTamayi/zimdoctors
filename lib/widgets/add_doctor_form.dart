@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:zimdoctors/Screens/home_screen.dart';
+import 'package:zimdoctors/Screens/doctor_dashboard_screen.dart';
 import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
 
@@ -88,13 +89,6 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
 
   Future<void> _submitForm() async {
     if (_formKey.currentState!.validate()) {
-      if (_imageFile == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a profile image')),
-        );
-        return;
-      }
-
       setState(() => _isLoading = true);
 
       try {
@@ -108,47 +102,62 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
         if (user == null) throw Exception('Failed to create user');
         final uid = user.uid;
 
-        // Update code with actual UID
-        final docCode = 'DOC${uid.substring(0, 5).toUpperCase()}';
+        try {
+          // Update code with actual UID
+          final docCode = 'DOC${uid.substring(0, 5).toUpperCase()}';
 
-        // 2. Upload image
-        final imageUrl = await _doctorService.uploadProfileImage(
-          _imageFile!,
-          uid,
-        );
+          // 2. Upload image (only if selected)
+          String imageUrl = '';
+          if (_imageFile != null) {
+            try {
+              imageUrl = await _doctorService.uploadProfileImage(
+                _imageFile!,
+                uid,
+              );
+            } catch (e) {
+              print('Doctor image upload skipped/failed: $e');
+              // Continue without image
+            }
+          }
 
-        // 3. Create Doctor in Firestore
-        final newDoctor = Doctor(
-          id: uid,
-          name: _nameController.text.trim(),
-          specialty: _specialtyController.text.trim(),
-          rating: double.tryParse(_ratingController.text) ?? 0.0,
-          image: imageUrl,
-          location: _locationController.text.trim(),
-          phoneNumber: _phoneController.text.trim(),
-          experience: _experienceController.text.trim(),
-          patients: int.tryParse(_patientsController.text) ?? 0,
-          fee: int.tryParse(_feeController.text) ?? 0,
-          followUp: int.tryParse(_followUpController.text) ?? 0,
-          code: docCode,
-          joined: _joinedController.text.trim(),
-          description: _descriptionController.text.trim(),
-          availableDates: [],
-        );
-
-        await _doctorService.createDoctor(newDoctor);
-
-        if (mounted) {
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            Homescreen.id,
-            (route) => false,
+          // 3. Create Doctor in Firestore
+          final newDoctor = Doctor(
+            id: uid,
+            name: _nameController.text.trim(),
+            specialty: _specialtyController.text.trim(),
+            rating: double.tryParse(_ratingController.text) ?? 0.0,
+            image: imageUrl,
+            location: _locationController.text.trim(),
+            phoneNumber: _phoneController.text.trim(),
+            experience: _experienceController.text.trim(),
+            patients: int.tryParse(_patientsController.text) ?? 0,
+            fee: int.tryParse(_feeController.text) ?? 0,
+            followUp: int.tryParse(_followUpController.text) ?? 0,
+            code: docCode,
+            joined: _joinedController.text.trim(),
+            description: _descriptionController.text.trim(),
+            availableDates: [],
+            availabilitySlots: {},
           );
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Doctor profile created successfully'),
-            ),
-          );
+
+          await _doctorService.createDoctor(newDoctor);
+
+          if (mounted) {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              DoctorDashboardScreen.id,
+              (route) => false,
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Doctor profile created successfully'),
+              ),
+            );
+          }
+        } catch (dbError) {
+          // ROLLBACK: Delete the auth user if DB creation fails
+          await user.delete();
+          rethrow;
         }
       } catch (e) {
         if (mounted) {
@@ -209,14 +218,10 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
                           backgroundColor: const Color(0xFF1E1E1E),
                           backgroundImage: _imageFile != null
                               ? FileImage(_imageFile!)
-                              : null,
-                          child: _imageFile == null
-                              ? const Icon(
-                                  Icons.person,
-                                  size: 60,
-                                  color: Colors.grey,
-                                )
-                              : null,
+                              : const NetworkImage(
+                                      'https://cdn-icons-png.flaticon.com/512/3135/3135715.png')
+                                  as ImageProvider,
+                          child: null,
                         ),
                         Positioned(
                           bottom: 0,

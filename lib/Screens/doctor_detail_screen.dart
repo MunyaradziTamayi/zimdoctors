@@ -411,13 +411,88 @@ class DoctorDetailScreen extends StatelessWidget {
     );
 
     if (selectedDate != null) {
-      final TimeOfDay? pickedTime = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.now(),
-      );
+      final List<String> availableSlots = doctor.availabilitySlots[selectedDate] ??
+          [];
 
-      if (pickedTime != null) {
-        final doctorService = DoctorService();
+      if (availableSlots.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No time slots available for this date.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      String? selectedSlot;
+      final doctorService = DoctorService();
+
+      if (context.mounted) {
+        await showDialog(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              title: Text(
+                'Select Time Slot',
+                style: GoogleFonts.inter(color: Colors.white),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: FutureBuilder<List<String>>(
+                  future: Future.wait(
+                    availableSlots.map((slot) async {
+                      final isBooked = await doctorService.isSlotBooked(
+                        doctor.id,
+                        selectedDate!,
+                        slot,
+                      );
+                      return isBooked ? '' : slot;
+                    }),
+                  ).then((results) => results.where((s) => s.isNotEmpty).toList()),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF57E659),
+                        ),
+                      );
+                    }
+                    final freeSlots = snapshot.data ?? [];
+                    if (freeSlots.isEmpty) {
+                      return const Text(
+                        'All slots are fully booked for this date.',
+                        style: TextStyle(color: Colors.grey),
+                      );
+                    }
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: freeSlots.length,
+                      itemBuilder: (context, index) {
+                        final slot = freeSlots[index];
+                        return ListTile(
+                          title: Text(
+                            slot,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          onTap: () {
+                            selectedSlot = slot;
+                            Navigator.pop(context);
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        );
+      }
+
+      if (selectedSlot != null) {
         final user = FirebaseAuth.instance.currentUser;
 
         if (user == null) {
@@ -425,27 +500,6 @@ class DoctorDetailScreen extends StatelessWidget {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Please login to book an appointment'),
-              ),
-            );
-          }
-          return;
-        }
-
-        // Check for double booking
-        final isBooked = await doctorService.isSlotBooked(
-          doctor.id,
-          selectedDate!,
-          pickedTime.format(context),
-        );
-
-        if (isBooked) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'This slot is already booked. Please choose another time.',
-                ),
-                backgroundColor: Colors.red,
               ),
             );
           }
@@ -468,7 +522,7 @@ class DoctorDetailScreen extends StatelessWidget {
               patientName:
                   user.displayName ?? user.email?.split('@').first ?? 'Patient',
               date: selectedDate!,
-              time: pickedTime.format(context),
+              time: selectedSlot!,
               status: 'confirmed', // Confirmed if paid
               paymentStatus: 'paid',
               transactionRef: paymentResult['reference'],
@@ -477,7 +531,7 @@ class DoctorDetailScreen extends StatelessWidget {
             );
 
             try {
-              await doctorService.createBooking(booking);
+              await doctorService.createBookingAtomic(booking);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -490,8 +544,13 @@ class DoctorDetailScreen extends StatelessWidget {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Error saving booking: $e'),
+                    content: Text(
+                      e.toString().contains('already been booked')
+                          ? 'This slot was just taken by another patient. Please contact support if you were charged.'
+                          : 'Error saving booking: $e',
+                    ),
                     backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 5),
                   ),
                 );
               }
@@ -698,6 +757,33 @@ class DoctorDetailScreen extends StatelessWidget {
                                 color: Colors.black,
                               ),
                             ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.pop(context, {
+                          'success': true,
+                          'reference': 'TEST_REF_${DateTime.now().millisecondsSinceEpoch}',
+                        });
+                      },
+                      style: TextButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: Colors.grey[800]!),
+                        ),
+                      ),
+                      child: Text(
+                        'Skip Payment (Testing Only)',
+                        style: GoogleFonts.inter(
+                          color: Colors.grey[400],
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 40),

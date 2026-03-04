@@ -113,8 +113,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
               crossAxisCount: 2,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio:
-                  0.68, // Adjusted height for more centered details
+              childAspectRatio: 0.64, // Adjusted height to prevent bottom overflow
             ),
             itemCount: doctors.length,
             itemBuilder: (context, index) {
@@ -150,12 +149,9 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                                 color: Colors.white,
                               )
                             : null,
-                        onBackgroundImageError: (exception, stackTrace) =>
-                            const Icon(
-                              Icons.person,
-                              size: 35,
-                              color: Colors.white,
-                            ),
+                        onBackgroundImageError: doctor.image.isNotEmpty 
+                          ? (exception, stackTrace) => print('Error loading image')
+                          : null,
                       ),
                       const SizedBox(height: 12),
                       Text(

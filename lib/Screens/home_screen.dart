@@ -68,188 +68,174 @@ class _HomescreenState extends State<Homescreen> {
         bottom: false,
         child: Stack(
           children: [
-            Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20.0,
-                    vertical: 10,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Top Icons
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildCircleIcon(
-                            Icons.logout,
-                            onTap: () async {
-                              // Show confirmation dialog
-                              final shouldLogout = await showDialog<bool>(
-                                context: context,
-                                builder: (dialogContext) => AlertDialog(
-                                  backgroundColor: const Color(0xFF1E1E1E),
-                                  title: Text(
-                                    'Logout',
-                                    style: GoogleFonts.inter(
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  content: Text(
-                                    'Are you sure you want to logout?',
-                                    style: GoogleFonts.inter(
-                                      color: Colors.grey[400],
-                                    ),
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(dialogContext, false),
-                                      child: Text(
-                                        'Cancel',
-                                        style: GoogleFonts.inter(
-                                          color: Colors.grey[400],
-                                        ),
+            SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20.0,
+                      vertical: 10,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Top Icons
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _buildCircleIcon(
+                              Icons.logout,
+                              onTap: () async {
+                                
+                                final shouldLogout = await showDialog<bool>(
+                                  context: context,
+                                  builder: (dialogContext) => AlertDialog(
+                                    backgroundColor: const Color(0xFF1E1E1E),
+                                    title: Text(
+                                      'Logout',
+                                      style: GoogleFonts.inter(
+                                        color: Colors.white,
                                       ),
                                     ),
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(dialogContext, true),
-                                      child: Text(
-                                        'Logout',
-                                        style: GoogleFonts.inter(
-                                          color: const Color(0xFF57E659),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
+                                  ),
+                                );
 
-                              if (shouldLogout == true) {
-                                await _auth.signOut();
-                                if (mounted) {
-                                  Navigator.pushNamedAndRemoveUntil(
-                                    context,
-                                    LoginScreen.id,
-                                    (route) => false,
-                                  );
+                                if (shouldLogout == true) {
+                                  await _auth.signOut();
+                                  if (mounted) {
+                                    Navigator.pushNamedAndRemoveUntil(
+                                      context,
+                                      LoginScreen.id,
+                                      (route) => false,
+                                    );
+                                  }
                                 }
-                              }
-                            },
-                          ),
-                          Row(
-                            children: [
-                              _buildCircleIcon(Icons.calendar_today_outlined),
-                              const SizedBox(width: 12),
-                              _buildCircleIcon(
-                                Icons.notifications_outlined,
-                                hasDot: true,
-                              ),
-                              const SizedBox(width: 12),
-                              CircleAvatar(
-                                radius: 22,
-                                backgroundColor: const Color(0xFF1E1E1E),
-                                backgroundImage:
-                                    (localImagePath != null &&
-                                        localImagePath!.isNotEmpty)
-                                    ? FileImage(File(localImagePath!))
+                              },
+                            ),
+                            Row(
+                              children: [
+                                _buildCircleIcon(Icons.calendar_today_outlined),
+                                const SizedBox(width: 12),
+                                _buildCircleIcon(
+                                  Icons.notifications_outlined,
+                                  hasDot: true,
+                                ),
+                                const SizedBox(width: 12),
+                                CircleAvatar(
+                                  radius: 22,
+                                  backgroundColor: const Color(0xFF1E1E1E),
+                                  backgroundImage: (localImagePath != null &&
+                                          localImagePath!.isNotEmpty)
+                                      ? FileImage(File(localImagePath!))
                                           as ImageProvider
-                                    : (userPhoto != null &&
-                                          userPhoto!.isNotEmpty)
-                                    ? NetworkImage(userPhoto!)
-                                    : null,
-                                child:
-                                    (localImagePath == null ||
-                                            localImagePath!.isEmpty) &&
-                                        (userPhoto == null ||
-                                            userPhoto!.isEmpty)
-                                    ? const Icon(
-                                        Icons.person,
-                                        color: Colors.grey,
-                                      )
-                                    : null,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Title
-                      Text(
-                        'Access all Doctors',
-                        style: GoogleFonts.inter(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Search Bar
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              height: 50,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1E1E1E),
-                                borderRadius: BorderRadius.circular(25),
-                              ),
-                              child: TextField(
-                                controller: _searchController,
-                                onChanged: (value) {
-                                  setState(() {
-                                    _searchQuery = value.toLowerCase();
-                                  });
-                                },
-                                style: const TextStyle(color: Colors.white),
-                                decoration: InputDecoration(
-                                  hintText: 'Search doctors...',
-                                  hintStyle: TextStyle(color: Colors.grey[600]),
-                                  prefixIcon: Icon(
-                                    Icons.search,
-                                    color: Colors.grey[500],
-                                  ),
-                                  suffixIcon: _searchQuery.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(
-                                            Icons.clear,
-                                            color: Colors.grey,
-                                            size: 20,
-                                          ),
-                                          onPressed: () {
-                                            _searchController.clear();
-                                            setState(() {
-                                              _searchQuery = '';
-                                            });
-                                          },
+                                      : (userPhoto != null &&
+                                              userPhoto!.isNotEmpty)
+                                          ? NetworkImage(userPhoto!)
+                                          : null,
+                                  child: (localImagePath == null ||
+                                              localImagePath!.isEmpty) &&
+                                          (userPhoto == null ||
+                                              userPhoto!.isEmpty)
+                                      ? const Icon(
+                                          Icons.person,
+                                          color: Colors.grey,
                                         )
                                       : null,
-                                  border: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 15,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Title
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Zim Doctors',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 28, 
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  '',
+                                  style: TextStyle(fontSize: 28),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                           
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Search Bar
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1E1E1E),
+                                  borderRadius: BorderRadius.circular(25),
+                                ),
+                                child: TextField(
+                                  controller: _searchController,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _searchQuery = value.toLowerCase();
+                                    });
+                                  },
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    hintText: 'Search doctors...',
+                                    hintStyle: TextStyle(color: Colors.grey[600]),
+                                    prefixIcon: Icon(
+                                      Icons.search,
+                                      color: Colors.grey[500],
+                                    ),
+                                    suffixIcon: _searchQuery.isNotEmpty
+                                        ? IconButton(
+                                            icon: const Icon(
+                                              Icons.clear,
+                                              color: Colors.grey,
+                                              size: 20,
+                                            ),
+                                            onPressed: () {
+                                              _searchController.clear();
+                                              setState(() {
+                                                _searchQuery = '';
+                                              });
+                                            },
+                                          )
+                                        : null,
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 15,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          _buildCircleIcon(Icons.tune, size: 50),
-                        ],
-                      ),
-                      const SizedBox(height: 15),
-                    ],
+                            const SizedBox(width: 12),
+                            _buildCircleIcon(Icons.tune, size: 50),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-                // Featured Doctor Card (Scrollable Content)
-                Expanded(
-                  child: SingleChildScrollView(
+                  // Featured Content
+                  Padding(
                     padding: const EdgeInsets.only(
                       left: 20,
                       right: 20,
@@ -281,7 +267,7 @@ class _HomescreenState extends State<Homescreen> {
                                 ],
                               ),
                               child: Container(
-                                padding: const EdgeInsets.all(24),
+                                padding: const EdgeInsets.all(20), // Reduced from 24
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(32),
                                   gradient: LinearGradient(
@@ -296,7 +282,7 @@ class _HomescreenState extends State<Homescreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    const SizedBox(height: 20),
+                                    const SizedBox(height: 10), // Reduced from 20
                                     // Animated Microphone Icon
                                     TweenAnimationBuilder<double>(
                                       tween: Tween(begin: 0.0, end: 1.0),
@@ -305,8 +291,8 @@ class _HomescreenState extends State<Homescreen> {
                                         return Transform.scale(
                                           scale: 0.95 + (0.1 * value),
                                           child: Container(
-                                            width: 140,
-                                            height: 140,
+                                            width: 110, // Reduced from 140
+                                            height: 110, // Reduced from 140
                                             decoration: BoxDecoration(
                                               shape: BoxShape.circle,
                                               gradient: RadialGradient(
@@ -324,8 +310,8 @@ class _HomescreenState extends State<Homescreen> {
                                             ),
                                             child: Center(
                                               child: Container(
-                                                width: 100,
-                                                height: 100,
+                                                width: 80, // Reduced from 100
+                                                height: 80, // Reduced from 100
                                                 decoration: const BoxDecoration(
                                                   shape: BoxShape.circle,
                                                   gradient: LinearGradient(
@@ -339,14 +325,14 @@ class _HomescreenState extends State<Homescreen> {
                                                   boxShadow: [
                                                     BoxShadow(
                                                       color: Color(0xFF8B5CF6),
-                                                      blurRadius: 30,
-                                                      spreadRadius: 5,
+                                                      blurRadius: 20, // Reduced from 30
+                                                      spreadRadius: 3, // Reduced from 5
                                                     ),
                                                   ],
                                                 ),
                                                 child: const Icon(
                                                   Icons.mic_rounded,
-                                                  size: 50,
+                                                  size: 40, // Reduced from 50
                                                   color: Colors.white,
                                                 ),
                                               ),
@@ -355,12 +341,12 @@ class _HomescreenState extends State<Homescreen> {
                                         );
                                       },
                                     ),
-                                    const SizedBox(height: 32),
+                                    const SizedBox(height: 24), // Reduced from 32
                                     // AI Badge
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 8,
+                                        horizontal: 14, // Reduced from 16
+                                        vertical: 6, // Reduced from 8
                                       ),
                                       decoration: BoxDecoration(
                                         color: Colors.white.withOpacity(0.2),
@@ -373,8 +359,8 @@ class _HomescreenState extends State<Homescreen> {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Container(
-                                            width: 6,
-                                            height: 6,
+                                            width: 5, // Reduced from 6
+                                            height: 5, // Reduced from 6
                                             decoration: const BoxDecoration(
                                               color: Color(0xFF57E659),
                                               shape: BoxShape.circle,
@@ -384,7 +370,7 @@ class _HomescreenState extends State<Homescreen> {
                                           Text(
                                             'AI-Powered Healthcare',
                                             style: GoogleFonts.inter(
-                                              fontSize: 12,
+                                              fontSize: 11, // Reduced from 12
                                               fontWeight: FontWeight.w600,
                                               color: Colors.white,
                                             ),
@@ -392,18 +378,18 @@ class _HomescreenState extends State<Homescreen> {
                                         ],
                                       ),
                                     ),
-                                    const SizedBox(height: 24),
+                                    const SizedBox(height: 16), // Reduced from 24
                                     // Headline
                                     Text(
                                       'Chat with ZimDocs AI',
                                       style: GoogleFonts.inter(
-                                        fontSize: 26,
+                                        fontSize: 22, // Reduced from 26
                                         fontWeight: FontWeight.w700,
                                         color: Colors.white,
                                       ),
                                       textAlign: TextAlign.center,
                                     ),
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: 8), // Reduced from 12
                                     // Description
                                     Padding(
                                       padding: const EdgeInsets.symmetric(
@@ -412,18 +398,18 @@ class _HomescreenState extends State<Homescreen> {
                                       child: Text(
                                         'Instant medical advice and health guidance, just one click away.',
                                         style: GoogleFonts.inter(
-                                          fontSize: 14,
+                                          fontSize: 13, // Reduced from 14
                                           fontWeight: FontWeight.w400,
                                           color: Colors.white.withOpacity(0.8),
-                                          height: 1.4,
+                                          height: 1.3, // Reduced from 1.4
                                         ),
                                         textAlign: TextAlign.center,
                                       ),
                                     ),
-                                    const SizedBox(height: 32),
+                                    const SizedBox(height: 24), // Reduced from 32
                                     // Start Chat Button
                                     ClipRRect(
-                                      borderRadius: BorderRadius.circular(28),
+                                      borderRadius: BorderRadius.circular(24), // Reduced from 28
                                       child: BackdropFilter(
                                         filter: ImageFilter.blur(
                                           sigmaX: 5,
@@ -431,13 +417,13 @@ class _HomescreenState extends State<Homescreen> {
                                         ),
                                         child: Container(
                                           width: double.infinity,
-                                          height: 56,
+                                          height: 50, // Reduced from 56
                                           decoration: BoxDecoration(
                                             color: Colors.white.withOpacity(
                                               0.1,
                                             ),
                                             borderRadius: BorderRadius.circular(
-                                              28,
+                                              24, // Reduced from 28
                                             ),
                                             border: Border.all(
                                               color: Colors.white.withOpacity(
@@ -459,7 +445,7 @@ class _HomescreenState extends State<Homescreen> {
                                               shadowColor: Colors.transparent,
                                               shape: RoundedRectangleBorder(
                                                 borderRadius:
-                                                    BorderRadius.circular(28),
+                                                    BorderRadius.circular(24),
                                               ),
                                             ),
                                             child: Row(
@@ -469,13 +455,13 @@ class _HomescreenState extends State<Homescreen> {
                                                 const Icon(
                                                   Icons.chat_bubble_rounded,
                                                   color: Colors.white,
-                                                  size: 22,
+                                                  size: 18, // Reduced from 22
                                                 ),
-                                                const SizedBox(width: 12),
+                                                const SizedBox(width: 10), // Reduced from 12
                                                 Text(
                                                   'Start Chat Now',
                                                   style: GoogleFonts.inter(
-                                                    fontSize: 16,
+                                                    fontSize: 15, // Reduced from 16
                                                     fontWeight: FontWeight.w700,
                                                     color: Colors.white,
                                                   ),
@@ -486,7 +472,7 @@ class _HomescreenState extends State<Homescreen> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 20),
+                                    const SizedBox(height: 10), // Reduced from 20
                                   ],
                                 ),
                               ),
@@ -562,7 +548,6 @@ class _HomescreenState extends State<Homescreen> {
                                       specialty.contains(_searchQuery) ||
                                       location.contains(_searchQuery);
                                 })
-                                .take(2)
                                 .toList();
 
                             if (doctors.isEmpty) {
@@ -574,209 +559,208 @@ class _HomescreenState extends State<Homescreen> {
                               );
                             }
 
-                            return Row(
-                              children: doctors.map((doctor) {
-                                return Expanded(
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      Navigator.pushNamed(
-                                        context,
-                                        DoctorDetailScreen.id,
-                                        arguments: doctor,
-                                      );
-                                    },
-                                    child: Container(
-                                      margin: const EdgeInsets.only(right: 12),
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF1E1E1E),
-                                        borderRadius: BorderRadius.circular(24),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 35,
-                                            backgroundColor: const Color(
-                                              0xFF2C2C2C,
-                                            ),
-                                            backgroundImage:
-                                                doctor.image.isNotEmpty
-                                                ? NetworkImage(doctor.image)
-                                                : null,
-                                            child: doctor.image.isEmpty
-                                                ? const Icon(
-                                                    Icons.person,
-                                                    size: 35,
-                                                    color: Colors.white,
-                                                  )
-                                                : null,
-                                            onBackgroundImageError:
-                                                (exception, stackTrace) =>
-                                                    const Icon(
+                            return SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              child: Row(
+                                children: doctors.map((doctor) {
+                                  return SizedBox(
+                                    width: 200, // Fixed width for horizontal scrolling
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        Navigator.pushNamed(
+                                          context,
+                                          DoctorDetailScreen.id,
+                                          arguments: doctor,
+                                        );
+                                      },
+                                      child: Container(
+                                        margin: const EdgeInsets.only(right: 12),
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF1E1E1E),
+                                          borderRadius: BorderRadius.circular(24),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.center,
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 35,
+                                              backgroundColor: const Color(
+                                                0xFF2C2C2C,
+                                              ),
+                                              backgroundImage: doctor.image.isNotEmpty
+                                                  ? NetworkImage(doctor.image)
+                                                  : null,
+                                              child: doctor.image.isEmpty
+                                                  ? const Icon(
                                                       Icons.person,
                                                       size: 35,
                                                       color: Colors.white,
-                                                    ),
-                                          ),
-                                          const SizedBox(height: 16),
-                                          Text(
-                                            doctor.name,
-                                            style: GoogleFonts.inter(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w700,
-                                              color: Colors.white,
+                                                    )
+                                                  : null,
+                                              onBackgroundImageError: doctor.image.isNotEmpty
+                                                  ? (exception, stackTrace) => print('Error loading image')
+                                                  : null,
                                             ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            textAlign: TextAlign.center,
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            doctor.specialty,
-                                            style: GoogleFonts.inter(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                              color: const Color(0xFF57E659),
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            textAlign: TextAlign.center,
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Icon(
-                                                Icons.location_on,
-                                                size: 12,
-                                                color: Colors.grey[500],
+                                            const SizedBox(height: 16),
+                                            Text(
+                                              doctor.name,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.white,
                                               ),
-                                              const SizedBox(width: 4),
-                                              Flexible(
-                                                child: Text(
-                                                  doctor.location,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              doctor.specialty,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: const Color(0xFF57E659),
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.location_on,
+                                                  size: 12,
+                                                  color: Colors.grey[500],
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Flexible(
+                                                  child: Text(
+                                                    doctor.location,
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 11,
+                                                      color: Colors.grey[400],
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.monetization_on,
+                                                  size: 12,
+                                                  color: Colors.amber[400],
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  'Fee: \$${doctor.fee}',
                                                   style: GoogleFonts.inter(
                                                     fontSize: 11,
-                                                    color: Colors.grey[400],
+                                                    color: Colors.amber[400],
+                                                    fontWeight: FontWeight.w600,
                                                   ),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
                                                 ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Icon(
-                                                Icons.monetization_on,
-                                                size: 12,
-                                                color: Colors.amber[400],
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                'Fee: \$${doctor.fee}',
-                                                style: GoogleFonts.inter(
-                                                  fontSize: 11,
-                                                  color: Colors.amber[400],
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 20),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 6,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black,
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                ),
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      doctor
-                                                              .availableDates
-                                                              .isNotEmpty
-                                                          ? DateFormat(
-                                                              'dd MMM',
-                                                            ).format(
-                                                              DateTime.parse(
-                                                                doctor
-                                                                    .availableDates
-                                                                    .first,
-                                                              ),
-                                                            )
-                                                          : 'N/A',
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 10,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color: Colors.white,
+                                              ],
+                                            ),
+                                            const SizedBox(height: 20),
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 6,
                                                       ),
-                                                    ),
-                                                    Text(
-                                                      doctor
-                                                              .availableDates
-                                                              .isNotEmpty
-                                                          ? 'Available'
-                                                          : 'No Slots',
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 9,
-                                                        fontWeight:
-                                                            FontWeight.w400,
-                                                        color: Colors.grey,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black,
+                                                    borderRadius:
+                                                        BorderRadius.circular(12),
+                                                  ),
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        doctor
+                                                                .availableDates
+                                                                .isNotEmpty
+                                                            ? DateFormat(
+                                                                'dd MMM',
+                                                              ).format(
+                                                                DateTime.parse(
+                                                                  doctor
+                                                                      .availableDates
+                                                                      .first,
+                                                                ),
+                                                              )
+                                                            : 'N/A',
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: 10,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color: Colors.white,
+                                                        ),
                                                       ),
-                                                    ),
-                                                  ],
+                                                      Text(
+                                                        doctor
+                                                                .availableDates
+                                                                .isNotEmpty
+                                                            ? 'Available'
+                                                            : 'No Slots',
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: 9,
+                                                          fontWeight:
+                                                              FontWeight.w400,
+                                                          color: Colors.grey,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
-                                              ),
-                                              Container(
-                                                width: 32,
-                                                height: 32,
-                                                decoration: const BoxDecoration(
-                                                  color: Colors.black,
-                                                  shape: BoxShape.circle,
+                                                Container(
+                                                  width: 32,
+                                                  height: 32,
+                                                  decoration: const BoxDecoration(
+                                                    color: Colors.black,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons.arrow_outward,
+                                                    color: Colors.white,
+                                                    size: 16,
+                                                  ),
                                                 ),
-                                                child: const Icon(
-                                                  Icons.arrow_outward,
-                                                  color: Colors.white,
-                                                  size: 16,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
+                                              ],
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                );
-                              }).toList(),
+                                  );
+                                }).toList(),
+                              ),
                             );
                           },
                         ),
-                        const SizedBox(height: 24),
                       ],
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
 
             // Custom Bottom Navbar
