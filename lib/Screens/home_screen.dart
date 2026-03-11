@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:zimdoctors/Screens/ai_chat_screen.dart';
@@ -8,6 +9,7 @@ import 'dart:io';
 import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/Screens/doctors_screen.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
+import 'package:zimdoctors/services/user_location_service.dart';
 import 'package:zimdoctors/Screens/login_screen.dart';
 import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
 
@@ -23,11 +25,16 @@ class Homescreen extends StatefulWidget {
 class _HomescreenState extends State<Homescreen> {
   final _auth = FirebaseAuth.instance;
   final _doctorService = DoctorService();
+  final _userLocationService = UserLocationService();
   late User loggedInUser;
   String? userPhoto;
   String? localImagePath;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+
+  UserLocation? _userLocation;
+  UserLocationFailureReason? _locationFailureReason;
+  bool _isLocating = false;
 
   void getCurrentUser() {
     final user = _auth.currentUser;
@@ -45,6 +52,13 @@ class _HomescreenState extends State<Homescreen> {
   void initState() {
     super.initState();
     getCurrentUser();
+    Future.microtask(_refreshUserLocation);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -58,10 +72,88 @@ class _HomescreenState extends State<Homescreen> {
     }
   }
 
+  Future<void> _refreshUserLocation() async {
+    if (_isLocating) return;
+
+    setState(() {
+      _isLocating = true;
+      _locationFailureReason = null;
+    });
+
+    try {
+      final location = await _userLocationService.getCurrentLocation();
+      if (!mounted) return;
+      setState(() {
+        _userLocation = location;
+        _isLocating = false;
+      });
+    } on UserLocationFailure catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _userLocation = null;
+        _locationFailureReason = e.reason;
+        _isLocating = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _userLocation = null;
+        _locationFailureReason = UserLocationFailureReason.permissionDenied;
+        _isLocating = false;
+      });
+    }
+  }
+
+  Future<void> _onLocationActionPressed() async {
+    switch (_locationFailureReason) {
+      case UserLocationFailureReason.serviceDisabled:
+        await Geolocator.openLocationSettings();
+        break;
+      case UserLocationFailureReason.permissionDeniedForever:
+        await Geolocator.openAppSettings();
+        break;
+      case UserLocationFailureReason.permissionDenied:
+      case null:
+        await _refreshUserLocation();
+        break;
+    }
+  }
+
+  bool _doctorMatchesUserLocation(Doctor doctor) {
+    final userLocation = _userLocation;
+    if (userLocation == null) return false;
+
+    final doctorLocation = doctor.location.toLowerCase();
+
+    final rawCandidates = <String?>[
+      userLocation.subLocality,
+      userLocation.locality,
+      userLocation.administrativeArea,
+      userLocation.country,
+    ];
+
+    final seen = <String>{};
+    final candidates = <String>[];
+    for (final value in rawCandidates) {
+      final trimmed = value?.trim();
+      if (trimmed == null || trimmed.isEmpty) continue;
+      final normalized = trimmed.toLowerCase();
+      if (seen.add(normalized)) candidates.add(normalized);
+    }
+
+    for (final token in candidates) {
+      if (doctorLocation.contains(token)) return true;
+    }
+    return false;
+  }
+
   int _selectedIndex = 1;
 
   @override
   Widget build(BuildContext context) {
+    final headerLocationText = _userLocation?.bestLabel ??
+        (_isLocating ? 'Locating...' : _locationActionText());
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -149,32 +241,73 @@ class _HomescreenState extends State<Homescreen> {
                         ),
                         const SizedBox(height: 24),
 
-                        // Title
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  'Zim Doctors',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 28, 
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  '',
-                                  style: TextStyle(fontSize: 28),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                           
-                          ],
-                        ),
-                        const SizedBox(height: 24),
+	                        // Title
+	                        Column(
+	                          crossAxisAlignment: CrossAxisAlignment.start,
+	                          children: [
+	                            GestureDetector(
+	                              onTap: _isLocating ? null : _onLocationActionPressed,
+	                              child: Row(
+	                                mainAxisSize: MainAxisSize.min,
+	                                children: [
+	                                  Icon(
+	                                    Icons.location_on_outlined,
+	                                    size: 16,
+	                                    color: _userLocation == null
+	                                        ? Colors.grey[500]
+	                                        : const Color(0xFF57E659),
+	                                  ),
+	                                  const SizedBox(width: 6),
+	                                  Text(
+	                                    headerLocationText,
+	                                    style: GoogleFonts.inter(
+	                                      fontSize: 13,
+	                                      fontWeight: FontWeight.w600,
+	                                      color: _userLocation == null
+	                                          ? Colors.grey[400]
+	                                          : const Color(0xFF57E659),
+	                                    ),
+	                                  ),
+	                                  if (_isLocating) ...[
+	                                    const SizedBox(width: 10),
+	                                    const SizedBox(
+	                                      width: 14,
+	                                      height: 14,
+	                                      child: CircularProgressIndicator(
+	                                        strokeWidth: 2,
+	                                        color: Color(0xFF57E659),
+	                                      ),
+	                                    ),
+	                                  ],
+	                                ],
+	                              ),
+	                            ),
+	                            const SizedBox(height: 12),
+	                            Row(
+	                              children: [
+	                                Text(
+	                                  'Zim Doctors',
+	                                  style: GoogleFonts.inter(
+	                                    fontSize: 28, 
+	                                    fontWeight: FontWeight.w600,
+	                                    color: Colors.white,
+	                                  ),
+	                                ),
+	                              ],
+	                            ),
+	                            const SizedBox(height: 6),
+	                            Text(
+	                              'Location',
+	                              style: GoogleFonts.inter(
+	                                fontSize: 12,
+	                                fontWeight: FontWeight.w500,
+	                                color: Colors.grey[500],
+	                              ),
+	                            ),
+	                           
+	                          ],
+	                        ),
+	                        const SizedBox(height: 24),
 
                         // Search Bar
                         Row(
@@ -479,6 +612,7 @@ class _HomescreenState extends State<Homescreen> {
                             ),
                           ),
                         ),
+                        _buildRecommendedDoctorsSection(),
                         const SizedBox(height: 24),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -563,195 +697,7 @@ class _HomescreenState extends State<Homescreen> {
                               scrollDirection: Axis.horizontal,
                               physics: const BouncingScrollPhysics(),
                               child: Row(
-                                children: doctors.map((doctor) {
-                                  return SizedBox(
-                                    width: 200, // Fixed width for horizontal scrolling
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        Navigator.pushNamed(
-                                          context,
-                                          DoctorDetailScreen.id,
-                                          arguments: doctor,
-                                        );
-                                      },
-                                      child: Container(
-                                        margin: const EdgeInsets.only(right: 12),
-                                        padding: const EdgeInsets.all(16),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF1E1E1E),
-                                          borderRadius: BorderRadius.circular(24),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.center,
-                                          children: [
-                                            CircleAvatar(
-                                              radius: 35,
-                                              backgroundColor: const Color(
-                                                0xFF2C2C2C,
-                                              ),
-                                              backgroundImage: doctor.image.isNotEmpty
-                                                  ? NetworkImage(doctor.image)
-                                                  : null,
-                                              child: doctor.image.isEmpty
-                                                  ? const Icon(
-                                                      Icons.person,
-                                                      size: 35,
-                                                      color: Colors.white,
-                                                    )
-                                                  : null,
-                                              onBackgroundImageError: doctor.image.isNotEmpty
-                                                  ? (exception, stackTrace) => print('Error loading image')
-                                                  : null,
-                                            ),
-                                            const SizedBox(height: 16),
-                                            Text(
-                                              doctor.name,
-                                              style: GoogleFonts.inter(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w700,
-                                                color: Colors.white,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              textAlign: TextAlign.center,
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              doctor.specialty,
-                                              style: GoogleFonts.inter(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                                color: const Color(0xFF57E659),
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              textAlign: TextAlign.center,
-                                            ),
-                                            const SizedBox(height: 12),
-                                            Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  Icons.location_on,
-                                                  size: 12,
-                                                  color: Colors.grey[500],
-                                                ),
-                                                const SizedBox(width: 4),
-                                                Flexible(
-                                                  child: Text(
-                                                    doctor.location,
-                                                    style: GoogleFonts.inter(
-                                                      fontSize: 11,
-                                                      color: Colors.grey[400],
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  Icons.monetization_on,
-                                                  size: 12,
-                                                  color: Colors.amber[400],
-                                                ),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  'Fee: \$${doctor.fee}',
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 11,
-                                                    color: Colors.amber[400],
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 20),
-                                            Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 6,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black,
-                                                    borderRadius:
-                                                        BorderRadius.circular(12),
-                                                  ),
-                                                  child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        doctor
-                                                                .availableDates
-                                                                .isNotEmpty
-                                                            ? DateFormat(
-                                                                'dd MMM',
-                                                              ).format(
-                                                                DateTime.parse(
-                                                                  doctor
-                                                                      .availableDates
-                                                                      .first,
-                                                                ),
-                                                              )
-                                                            : 'N/A',
-                                                        style: GoogleFonts.inter(
-                                                          fontSize: 10,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          color: Colors.white,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        doctor
-                                                                .availableDates
-                                                                .isNotEmpty
-                                                            ? 'Available'
-                                                            : 'No Slots',
-                                                        style: GoogleFonts.inter(
-                                                          fontSize: 9,
-                                                          fontWeight:
-                                                              FontWeight.w400,
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                Container(
-                                                  width: 32,
-                                                  height: 32,
-                                                  decoration: const BoxDecoration(
-                                                    color: Colors.black,
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                  child: const Icon(
-                                                    Icons.arrow_outward,
-                                                    color: Colors.white,
-                                                    size: 16,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
+                                children: doctors.map(_buildDoctorCard).toList(),
                               ),
                             );
                           },
@@ -800,6 +746,368 @@ class _HomescreenState extends State<Homescreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  String _locationHintText() {
+    switch (_locationFailureReason) {
+      case UserLocationFailureReason.serviceDisabled:
+        return 'Turn on location services to see doctors near you.';
+      case UserLocationFailureReason.permissionDeniedForever:
+        return 'Enable location permission in Settings to see doctors near you.';
+      case UserLocationFailureReason.permissionDenied:
+      case null:
+        return 'Enable location to see doctors near you.';
+    }
+  }
+
+  String _locationActionText() {
+    switch (_locationFailureReason) {
+      case UserLocationFailureReason.serviceDisabled:
+        return 'Open location settings';
+      case UserLocationFailureReason.permissionDeniedForever:
+        return 'Open app settings';
+      case UserLocationFailureReason.permissionDenied:
+      case null:
+        return _userLocation == null ? 'Enable location' : 'Refresh';
+    }
+  }
+
+  Widget _buildRecommendedDoctorsSection() {
+    final locationLabel = _userLocation?.bestLabel;
+
+	    return Column(
+	      crossAxisAlignment: CrossAxisAlignment.start,
+	      children: [
+	        Row(
+	          children: [
+	            Expanded(
+	              child: Text(
+	                'Available Doctors Near You',
+	                maxLines: 1,
+	                overflow: TextOverflow.ellipsis,
+	                style: GoogleFonts.inter(
+	                  fontSize: 18,
+	                  fontWeight: FontWeight.w600,
+	                  color: Colors.white,
+	                ),
+	              ),
+	            ),
+	            const SizedBox(width: 12),
+	            Flexible(
+	              child: TextButton(
+	                onPressed: _isLocating ? null : _onLocationActionPressed,
+	                child: Row(
+	                  mainAxisSize: MainAxisSize.min,
+	                  children: [
+	                    _isLocating
+	                        ? const SizedBox(
+	                            width: 16,
+	                            height: 16,
+	                            child: CircularProgressIndicator(
+	                              strokeWidth: 2,
+	                              color: Color(0xFF57E659),
+	                            ),
+	                          )
+	                        : const Icon(
+	                            Icons.my_location,
+	                            size: 16,
+	                            color: Color(0xFF57E659),
+	                          ),
+	                    const SizedBox(width: 6),
+	                    Flexible(
+	                      child: Text(
+	                        locationLabel ?? _locationActionText(),
+	                        maxLines: 1,
+	                        overflow: TextOverflow.ellipsis,
+	                        style: GoogleFonts.inter(
+	                          fontSize: 12,
+	                          fontWeight: FontWeight.w600,
+	                          color: const Color(0xFF57E659),
+	                        ),
+	                      ),
+	                    ),
+	                  ],
+	                ),
+	              ),
+	            ),
+	          ],
+	        ),
+	        const SizedBox(height: 12),
+	        if (_userLocation == null)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.location_on, color: Colors.grey, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _locationHintText(),
+                    style: GoogleFonts.inter(
+                      color: Colors.grey[300],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                TextButton(
+                  onPressed: _isLocating ? null : _onLocationActionPressed,
+                  child: Text(
+                    _locationActionText(),
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF57E659),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          StreamBuilder<List<Doctor>>(
+            stream: _doctorService.getDoctors(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox(
+                  height: 110,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF57E659),
+                    ),
+                  ),
+                );
+              }
+
+              if (snapshot.hasError || !snapshot.hasData) {
+                return Text(
+                  'Unable to load nearby recommendations.',
+                  style: GoogleFonts.inter(color: Colors.grey),
+                );
+              }
+
+              final allDoctors = List<Doctor>.from(snapshot.data!)
+                ..sort((a, b) => b.rating.compareTo(a.rating));
+              final nearby =
+                  allDoctors.where(_doctorMatchesUserLocation).toList();
+
+              if (nearby.isEmpty) {
+                return Text(
+                  'No doctors found near "${_userLocation?.bestLabel ?? 'you'}".',
+                  style: GoogleFonts.inter(color: Colors.grey),
+                );
+              }
+
+              final topNearby = nearby.take(10).toList();
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  children: topNearby.map(_buildDoctorCard).toList(),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDoctorCard(Doctor doctor) {
+    return SizedBox(
+      width: 200, // Fixed width for horizontal scrolling
+      child: GestureDetector(
+        onTap: () {
+          Navigator.pushNamed(
+            context,
+            DoctorDetailScreen.id,
+            arguments: doctor,
+          );
+        },
+        child: Container(
+          margin: const EdgeInsets.only(right: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 35,
+                backgroundColor: const Color(0xFF2C2C2C),
+                backgroundImage:
+                    doctor.image.isNotEmpty ? NetworkImage(doctor.image) : null,
+                child: doctor.image.isEmpty
+                    ? const Icon(
+                        Icons.person,
+                        size: 35,
+                        color: Colors.white,
+                      )
+                    : null,
+                onBackgroundImageError: doctor.image.isNotEmpty
+                    ? (exception, stackTrace) => print('Error loading image')
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                doctor.name,
+                style: GoogleFonts.inter(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                doctor.specialty,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF57E659),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+	              Row(
+	                mainAxisAlignment: MainAxisAlignment.center,
+	                children: [
+	                  Icon(
+	                    Icons.location_on,
+                    size: 12,
+                    color: Colors.grey[500],
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      doctor.location,
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: Colors.grey[400],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+	                  ),
+	                ],
+	              ),
+	              if (doctor.surgeryLocation.trim().isNotEmpty) ...[
+	                const SizedBox(height: 6),
+	                Row(
+	                  mainAxisAlignment: MainAxisAlignment.center,
+	                  children: [
+	                    Icon(
+	                      Icons.local_hospital_outlined,
+	                      size: 12,
+	                      color: Colors.grey[500],
+	                    ),
+	                    const SizedBox(width: 4),
+	                    Flexible(
+	                      child: Text(
+	                        doctor.surgeryLocation,
+	                        style: GoogleFonts.inter(
+	                          fontSize: 11,
+	                          color: Colors.grey[400],
+	                        ),
+	                        maxLines: 1,
+	                        overflow: TextOverflow.ellipsis,
+	                      ),
+	                    ),
+	                  ],
+	                ),
+	              ],
+	              const SizedBox(height: 6),
+	              Row(
+	                mainAxisAlignment: MainAxisAlignment.center,
+	                children: [
+	                  Icon(
+                    Icons.monetization_on,
+                    size: 12,
+                    color: Colors.amber[400],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Fee: \$${doctor.fee}',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: Colors.amber[400],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          doctor.availableDates.isNotEmpty
+                              ? DateFormat('dd MMM').format(
+                                  DateTime.parse(doctor.availableDates.first),
+                                )
+                              : 'N/A',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Text(
+                          doctor.availableDates.isNotEmpty
+                              ? 'Available'
+                              : 'No Slots',
+                          style: GoogleFonts.inter(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: const BoxDecoration(
+                      color: Colors.black,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.arrow_outward,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

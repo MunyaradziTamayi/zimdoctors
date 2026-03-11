@@ -5,6 +5,7 @@ class Doctor {
   final double rating;
   final String image;
   final String location;
+  final String surgeryLocation;
   final String phoneNumber;
   final String experience;
   final int patients;
@@ -29,6 +30,7 @@ class Doctor {
     required this.code,
     required this.joined,
     required this.location,
+    this.surgeryLocation = '',
     required this.phoneNumber,
     required this.description,
     required this.availableDates,
@@ -50,6 +52,7 @@ class Doctor {
       rating: (map['rating'] as num?)?.toDouble() ?? 0.0,
       image: map['image'] ?? '',
       location: map['location'] ?? '',
+      surgeryLocation: map['surgeryLocation'] ?? map['workplace'] ?? '',
       phoneNumber: map['phoneNumber'] ?? '',
       experience: map['experience'] ?? '',
       patients: map['patients'] ?? 0,
@@ -70,6 +73,7 @@ class Doctor {
       'rating': rating,
       'image': image,
       'location': location,
+      'surgeryLocation': surgeryLocation,
       'phoneNumber': phoneNumber,
       'experience': experience,
       'patients': patients,

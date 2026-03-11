@@ -178,11 +178,11 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.location_on,
+	                      Row(
+	                        mainAxisAlignment: MainAxisAlignment.center,
+	                        children: [
+	                          Icon(
+	                            Icons.location_on,
                             size: 11,
                             color: Colors.grey[500],
                           ),
@@ -197,14 +197,39 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
+	                          ),
+	                        ],
+	                      ),
+	                      if (doctor.surgeryLocation.trim().isNotEmpty) ...[
+	                        const SizedBox(height: 4),
+	                        Row(
+	                          mainAxisAlignment: MainAxisAlignment.center,
+	                          children: [
+	                            Icon(
+	                              Icons.local_hospital_outlined,
+	                              size: 11,
+	                              color: Colors.grey[500],
+	                            ),
+	                            const SizedBox(width: 4),
+	                            Flexible(
+	                              child: Text(
+	                                doctor.surgeryLocation,
+	                                style: GoogleFonts.inter(
+	                                  fontSize: 10,
+	                                  color: Colors.grey[400],
+	                                ),
+	                                maxLines: 1,
+	                                overflow: TextOverflow.ellipsis,
+	                              ),
+	                            ),
+	                          ],
+	                        ),
+	                      ],
+	                      const SizedBox(height: 4),
+	                      Row(
+	                        mainAxisAlignment: MainAxisAlignment.center,
+	                        children: [
+	                          Icon(
                             Icons.monetization_on,
                             size: 11,
                             color: Colors.amber[400],

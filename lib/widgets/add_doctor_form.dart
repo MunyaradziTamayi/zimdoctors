@@ -46,6 +46,7 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
   late TextEditingController _specialtyController;
   final _ratingController = TextEditingController(text: '4.5');
   final _locationController = TextEditingController();
+  final _surgeryLocationController = TextEditingController();
   late TextEditingController _phoneController;
   final _experienceController = TextEditingController();
   final _patientsController = TextEditingController(text: '0');
@@ -67,6 +68,24 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
     if (widget.imagePath != null) {
       _imageFile = File(widget.imagePath!);
     }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _specialtyController.dispose();
+    _ratingController.dispose();
+    _locationController.dispose();
+    _surgeryLocationController.dispose();
+    _phoneController.dispose();
+    _experienceController.dispose();
+    _patientsController.dispose();
+    _feeController.dispose();
+    _followUpController.dispose();
+    _codeController.dispose();
+    _joinedController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
   }
 
   Future<void> _pickImage() async {
@@ -128,6 +147,7 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
             rating: double.tryParse(_ratingController.text) ?? 0.0,
             image: imageUrl,
             location: _locationController.text.trim(),
+            surgeryLocation: _surgeryLocationController.text.trim(),
             phoneNumber: _phoneController.text.trim(),
             experience: _experienceController.text.trim(),
             patients: int.tryParse(_patientsController.text) ?? 0,
@@ -169,23 +189,6 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
         if (mounted) setState(() => _isLoading = false);
       }
     }
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _specialtyController.dispose();
-    _ratingController.dispose();
-    _locationController.dispose();
-    _phoneController.dispose();
-    _experienceController.dispose();
-    _patientsController.dispose();
-    _feeController.dispose();
-    _followUpController.dispose();
-    _codeController.dispose();
-    _joinedController.dispose();
-    _descriptionController.dispose();
-    super.dispose();
   }
 
   @override
@@ -256,8 +259,13 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
                 const SizedBox(height: 20),
 
                 _buildTextField(
-                  label: 'Location',
+                  label: 'City / Area',
                   controller: _locationController,
+                ),
+                _buildTextField(
+                  label: 'Surgery / Workplace',
+                  controller: _surgeryLocationController,
+                  isRequired: false,
                 ),
                 _buildTextField(
                   label: 'Phone Number',
@@ -338,6 +346,7 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
     TextInputType keyboardType = TextInputType.text,
     int maxLines = 1,
     bool readOnly = false,
+    bool isRequired = true,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -348,6 +357,7 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
         readOnly: readOnly,
         style: const TextStyle(color: Colors.white),
         validator: (value) {
+          if (!isRequired) return null;
           if (value == null || value.isEmpty) {
             return 'Please enter $label';
           }

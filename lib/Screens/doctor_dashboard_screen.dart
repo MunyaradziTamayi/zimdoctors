@@ -38,6 +38,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
   final _specialtyController = TextEditingController();
   final _expController = TextEditingController();
   final _locationController = TextEditingController();
+  final _surgeryLocationController = TextEditingController();
   final _phoneController = TextEditingController();
 
   List<String> _tempAvailableDates = [];
@@ -62,6 +63,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
     _specialtyController.dispose();
     _expController.dispose();
     _locationController.dispose();
+    _surgeryLocationController.dispose();
     _phoneController.dispose();
     super.dispose();
   }
@@ -79,6 +81,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
           _specialtyController.text = doctor.specialty;
           _expController.text = doctor.experience;
           _locationController.text = doctor.location;
+          _surgeryLocationController.text = doctor.surgeryLocation;
           _phoneController.text = doctor.phoneNumber;
           _tempAvailableDates = List.from(doctor.availableDates);
           _tempAvailabilitySlots = Map.from(doctor.availabilitySlots.map(
@@ -425,8 +428,11 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
           _buildSectionTitle('Experience'),
           _buildTextField(_expController),
           const SizedBox(height: 20),
-          _buildSectionTitle('Location'),
+          _buildSectionTitle('City / Area'),
           _buildTextField(_locationController),
+          const SizedBox(height: 20),
+          _buildSectionTitle('Surgery / Workplace'),
+          _buildTextField(_surgeryLocationController),
           const SizedBox(height: 20),
           _buildSectionTitle('Phone Number'),
           _buildTextField(_phoneController),
@@ -518,6 +524,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
                   code: _currentDoctor!.code,
                   joined: _currentDoctor!.joined,
                   location: _locationController.text,
+                  surgeryLocation: _surgeryLocationController.text,
                   phoneNumber: _phoneController.text,
                   description: _descController.text,
                   availableDates: _tempAvailableDates,
