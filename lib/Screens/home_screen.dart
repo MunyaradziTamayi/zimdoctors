@@ -1,17 +1,19 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:zimdoctors/Screens/ai_chat_screen.dart';
-import 'dart:ui';
-import 'dart:io';
 import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/Screens/doctors_screen.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
 import 'package:zimdoctors/services/user_location_service.dart';
 import 'package:zimdoctors/Screens/login_screen.dart';
 import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
+import 'package:zimdoctors/utils/availability_utils.dart';
 
 class Homescreen extends StatefulWidget {
   static String id = '/home_screen';
@@ -35,6 +37,7 @@ class _HomescreenState extends State<Homescreen> {
   UserLocation? _userLocation;
   UserLocationFailureReason? _locationFailureReason;
   bool _isLocating = false;
+  bool _locationDialogShown = false;
 
   void getCurrentUser() {
     final user = _auth.currentUser;
@@ -52,7 +55,10 @@ class _HomescreenState extends State<Homescreen> {
   void initState() {
     super.initState();
     getCurrentUser();
-    Future.microtask(_refreshUserLocation);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _refreshUserLocation();
+      _scheduleLocationDialogIfNeeded();
+    });
   }
 
   @override
@@ -94,6 +100,7 @@ class _HomescreenState extends State<Homescreen> {
         _locationFailureReason = e.reason;
         _isLocating = false;
       });
+      _scheduleLocationDialogIfNeeded();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -101,22 +108,97 @@ class _HomescreenState extends State<Homescreen> {
         _locationFailureReason = UserLocationFailureReason.permissionDenied;
         _isLocating = false;
       });
+      _scheduleLocationDialogIfNeeded();
     }
   }
 
   Future<void> _onLocationActionPressed() async {
     switch (_locationFailureReason) {
       case UserLocationFailureReason.serviceDisabled:
-        await Geolocator.openLocationSettings();
+        _scheduleLocationDialogIfNeeded(force: true);
         break;
       case UserLocationFailureReason.permissionDeniedForever:
-        await Geolocator.openAppSettings();
+        _scheduleLocationDialogIfNeeded(force: true);
         break;
       case UserLocationFailureReason.permissionDenied:
       case null:
         await _refreshUserLocation();
         break;
     }
+  }
+
+  void _scheduleLocationDialogIfNeeded({bool force = false}) {
+    if (_locationDialogShown && !force) return;
+
+    final reason = _locationFailureReason;
+    if (reason == null && !force) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_locationDialogShown && !force) return;
+
+      final currentReason = _locationFailureReason;
+      if (currentReason == null && !force) return;
+
+      _locationDialogShown = true;
+      unawaited(_showEnableLocationDialog(currentReason));
+    });
+  }
+
+  Future<void> _showEnableLocationDialog(UserLocationFailureReason? reason) {
+    String title = 'Turn on location';
+    String message = 'Please turn on location services to see doctors near you.';
+
+    switch (reason) {
+      case UserLocationFailureReason.permissionDeniedForever:
+      case UserLocationFailureReason.permissionDenied:
+        title = 'Enable location';
+        message = 'Please allow location access to see doctors near you.';
+        break;
+      case UserLocationFailureReason.serviceDisabled:
+      case null:
+        break;
+    }
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: Text(
+          title,
+          style: GoogleFonts.inter(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          message,
+          style: GoogleFonts.inter(
+            color: Colors.white.withOpacity(0.85),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(
+              'Not now',
+              style: GoogleFonts.inter(color: Colors.white70),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _refreshUserLocation();
+            },
+            child: Text(
+              'Retry',
+              style: GoogleFonts.inter(color: const Color(0xFF57E659)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   bool _doctorMatchesUserLocation(Doctor doctor) {
@@ -179,7 +261,6 @@ class _HomescreenState extends State<Homescreen> {
                             _buildCircleIcon(
                               Icons.logout,
                               onTap: () async {
-                                
                                 final shouldLogout = await showDialog<bool>(
                                   context: context,
                                   builder: (dialogContext) => AlertDialog(
@@ -190,16 +271,46 @@ class _HomescreenState extends State<Homescreen> {
                                         color: Colors.white,
                                       ),
                                     ),
+                                    content: Text(
+                                      'Are you sure you want to logout?',
+                                      style: GoogleFonts.inter(
+                                        color: Colors.grey[300],
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(dialogContext, false),
+                                        child: const Text(
+                                          'Cancel',
+                                          style: TextStyle(color: Colors.grey),
+                                        ),
+                                      ),
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(dialogContext, true),
+                                        child: const Text(
+                                          'Logout',
+                                          style: TextStyle(color: Colors.redAccent),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 );
 
                                 if (shouldLogout == true) {
-                                  await _auth.signOut();
-                                  if (mounted) {
+                                  try {
+                                    await _auth.signOut();
+                                    if (!mounted) return;
                                     Navigator.pushNamedAndRemoveUntil(
                                       context,
                                       LoginScreen.id,
                                       (route) => false,
+                                    );
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Logout failed: $e')),
                                     );
                                   }
                                 }
@@ -296,14 +407,7 @@ class _HomescreenState extends State<Homescreen> {
 	                              ],
 	                            ),
 	                            const SizedBox(height: 6),
-	                            Text(
-	                              'Location',
-	                              style: GoogleFonts.inter(
-	                                fontSize: 12,
-	                                fontWeight: FontWeight.w500,
-	                                color: Colors.grey[500],
-	                              ),
-	                            ),
+	                         
 	                           
 	                          ],
 	                        ),
@@ -684,6 +788,29 @@ class _HomescreenState extends State<Homescreen> {
                                 })
                                 .toList();
 
+                            doctors.sort((a, b) {
+                              final aEarliest =
+                                  AvailabilityUtilsX.earliestUpcomingSlot(
+                                availableDates: a.availableDates,
+                                availabilitySlots: a.availabilitySlots,
+                              );
+                              final bEarliest =
+                                  AvailabilityUtilsX.earliestUpcomingSlot(
+                                availableDates: b.availableDates,
+                                availabilitySlots: b.availabilitySlots,
+                              );
+
+                              if (aEarliest == null && bEarliest == null) {
+                                return b.rating.compareTo(a.rating);
+                              }
+                              if (aEarliest == null) return 1;
+                              if (bEarliest == null) return -1;
+
+                              final byTime = aEarliest.compareTo(bEarliest);
+                              if (byTime != 0) return byTime;
+                              return b.rating.compareTo(a.rating);
+                            });
+
                             if (doctors.isEmpty) {
                               return Center(
                                 child: Text(
@@ -756,19 +883,19 @@ class _HomescreenState extends State<Homescreen> {
       case UserLocationFailureReason.serviceDisabled:
         return 'Turn on location services to see doctors near you.';
       case UserLocationFailureReason.permissionDeniedForever:
-        return 'Enable location permission in Settings to see doctors near you.';
+        return 'Allow location access to see doctors near you.';
       case UserLocationFailureReason.permissionDenied:
       case null:
-        return 'Enable location to see doctors near you.';
+        return 'Allow location access to see doctors near you.';
     }
   }
 
   String _locationActionText() {
     switch (_locationFailureReason) {
       case UserLocationFailureReason.serviceDisabled:
-        return 'Open location settings';
+        return 'Turn on location';
       case UserLocationFailureReason.permissionDeniedForever:
-        return 'Open app settings';
+        return 'Turn on location';
       case UserLocationFailureReason.permissionDenied:
       case null:
         return _userLocation == null ? 'Enable location' : 'Refresh';
@@ -896,7 +1023,26 @@ class _HomescreenState extends State<Homescreen> {
               }
 
               final allDoctors = List<Doctor>.from(snapshot.data!)
-                ..sort((a, b) => b.rating.compareTo(a.rating));
+                ..sort((a, b) {
+                  final aEarliest = AvailabilityUtilsX.earliestUpcomingSlot(
+                    availableDates: a.availableDates,
+                    availabilitySlots: a.availabilitySlots,
+                  );
+                  final bEarliest = AvailabilityUtilsX.earliestUpcomingSlot(
+                    availableDates: b.availableDates,
+                    availabilitySlots: b.availabilitySlots,
+                  );
+
+                  if (aEarliest == null && bEarliest == null) {
+                    return b.rating.compareTo(a.rating);
+                  }
+                  if (aEarliest == null) return 1;
+                  if (bEarliest == null) return -1;
+
+                  final byTime = aEarliest.compareTo(bEarliest);
+                  if (byTime != 0) return byTime;
+                  return b.rating.compareTo(a.rating);
+                });
               final nearby =
                   allDoctors.where(_doctorMatchesUserLocation).toList();
 

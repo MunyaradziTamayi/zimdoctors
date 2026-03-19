@@ -4,6 +4,7 @@ import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
 import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
 import 'package:intl/intl.dart';
+import 'package:zimdoctors/utils/availability_utils.dart';
 
 class DoctorsScreen extends StatefulWidget {
   static const String id = '/doctors_screen';
@@ -97,6 +98,27 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                 specialty.contains(_searchQuery) ||
                 location.contains(_searchQuery);
           }).toList();
+
+          doctors.sort((a, b) {
+            final aEarliest = AvailabilityUtilsX.earliestUpcomingSlot(
+              availableDates: a.availableDates,
+              availabilitySlots: a.availabilitySlots,
+            );
+            final bEarliest = AvailabilityUtilsX.earliestUpcomingSlot(
+              availableDates: b.availableDates,
+              availabilitySlots: b.availabilitySlots,
+            );
+
+            if (aEarliest == null && bEarliest == null) {
+              return b.rating.compareTo(a.rating);
+            }
+            if (aEarliest == null) return 1;
+            if (bEarliest == null) return -1;
+
+            final byTime = aEarliest.compareTo(bEarliest);
+            if (byTime != 0) return byTime;
+            return b.rating.compareTo(a.rating);
+          });
 
           if (doctors.isEmpty) {
             return Center(

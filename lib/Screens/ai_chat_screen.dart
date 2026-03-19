@@ -1,7 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
+import 'package:zimdoctors/services/elevenlabs_service.dart';
 
 class Message {
   final String text;
@@ -27,6 +33,17 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
+  final AudioRecorder _recorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  StreamSubscription<void>? _playerCompleteSub;
+  File? _currentTtsFile;
+  ElevenLabsService? _elevenLabs;
+  String? _elevenLabsInitError;
+
+  bool _isRecording = false;
+  bool _isTranscribing = false;
+  int? _speakingMessageIndex;
+
   final List<Message> _messages = [
     Message(
       text:
@@ -40,6 +57,27 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     getCurrentUser();
+    _initElevenLabs();
+
+    _playerCompleteSub = _audioPlayer.onPlayerComplete.listen((_) async {
+      final fileToDelete = _currentTtsFile;
+      _currentTtsFile = null;
+      if (fileToDelete != null) {
+        try {
+          if (await fileToDelete.exists()) await fileToDelete.delete();
+        } catch (_) {}
+      }
+      if (!mounted) return;
+      setState(() => _speakingMessageIndex = null);
+    });
+  }
+
+  void _initElevenLabs() {
+    try {
+      _elevenLabs = ElevenLabsService.fromEnv();
+    } catch (e) {
+      _elevenLabsInitError = e.toString();
+    }
   }
 
   void getCurrentUser() {
@@ -108,6 +146,129 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _toggleRecording() async {
+    if (_elevenLabs == null) {
+      _showSnackBar(
+        'ElevenLabs not configured. Add ELEVENLABS_API_KEY to .env.',
+      );
+      return;
+    }
+
+    if (_isTranscribing) return;
+
+    if (_isRecording) {
+      final path = await _recorder.stop();
+      if (!mounted) return;
+      setState(() => _isRecording = false);
+
+      if (path == null) return;
+      await _transcribeAudioFile(File(path));
+      return;
+    }
+
+    final hasPermission = await _recorder.hasPermission();
+    if (!hasPermission) {
+      _showSnackBar('Microphone permission denied.');
+      return;
+    }
+
+    final dir = await getTemporaryDirectory();
+    final path =
+        '${dir.path}/elevenlabs_stt_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+    await _recorder.start(
+      const RecordConfig(
+        encoder: AudioEncoder.aacLc,
+        sampleRate: 44100,
+        bitRate: 128000,
+        numChannels: 1,
+      ),
+      path: path,
+    );
+
+    if (!mounted) return;
+    setState(() => _isRecording = true);
+  }
+
+  Future<void> _transcribeAudioFile(File audioFile) async {
+    final elevenLabs = _elevenLabs;
+    if (elevenLabs == null) return;
+
+    setState(() => _isTranscribing = true);
+    try {
+      final text = await elevenLabs.speechToText(audioFile);
+      if (!mounted) return;
+      setState(() {
+        _controller.text = text;
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: _controller.text.length),
+        );
+      });
+    } catch (e) {
+      _showSnackBar('Voice-to-text failed: $e');
+    } finally {
+      try {
+        if (await audioFile.exists()) await audioFile.delete();
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() => _isTranscribing = false);
+    }
+  }
+
+  Future<void> _toggleSpeakMessage(int index, String text) async {
+    final elevenLabs = _elevenLabs;
+    if (elevenLabs == null) {
+      _showSnackBar(
+        'ElevenLabs not configured. Add ELEVENLABS_API_KEY to .env.',
+      );
+      return;
+    }
+
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+
+    if (_speakingMessageIndex == index) {
+      await _audioPlayer.stop();
+      final fileToDelete = _currentTtsFile;
+      _currentTtsFile = null;
+      if (fileToDelete != null) {
+        try {
+          if (await fileToDelete.exists()) await fileToDelete.delete();
+        } catch (_) {}
+      }
+      if (!mounted) return;
+      setState(() => _speakingMessageIndex = null);
+      return;
+    }
+
+    setState(() => _speakingMessageIndex = index);
+    try {
+      await _audioPlayer.stop();
+      final previousFile = _currentTtsFile;
+      _currentTtsFile = null;
+      if (previousFile != null) {
+        try {
+          if (await previousFile.exists()) await previousFile.delete();
+        } catch (_) {}
+      }
+
+      final ttsFile = await elevenLabs.textToSpeechToFile(trimmed);
+      _currentTtsFile = ttsFile;
+      await _audioPlayer.play(DeviceFileSource(ttsFile.path));
+    } catch (e) {
+      _showSnackBar('Text-to-voice failed: $e');
+      if (!mounted) return;
+      setState(() => _speakingMessageIndex = null);
+    }
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -146,6 +307,19 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          if (_elevenLabsInitError != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: const Color(0xFF1E1E1E),
+              child: Text(
+                'Voice features disabled: $_elevenLabsInitError',
+                style: GoogleFonts.inter(
+                  color: Colors.orangeAccent,
+                  fontSize: 12,
+                ),
+              ),
+            ),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -153,7 +327,7 @@ class _ChatScreenState extends State<ChatScreen> {
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final message = _messages[index];
-                return _buildMessageBubble(message);
+                return _buildMessageBubble(message, index);
               },
             ),
           ),
@@ -163,8 +337,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildMessageBubble(Message message) {
+  Widget _buildMessageBubble(Message message, int index) {
     final isUser = message.sender == (loggedInUser?.email ?? 'Anonymous');
+    final isSpeaking = _speakingMessageIndex == index;
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -182,13 +357,53 @@ class _ChatScreenState extends State<ChatScreen> {
             bottomRight: isUser ? Radius.zero : const Radius.circular(20),
           ),
         ),
-        child: Text(
-          message.text,
-          style: GoogleFonts.inter(
-            color: isUser ? Colors.black : Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w400,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Flexible(
+              child: Text(
+                message.text,
+                style: GoogleFonts.inter(
+                  color: isUser ? Colors.black : Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => _toggleSpeakMessage(index, message.text),
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: isUser
+                      ? Colors.black.withOpacity(0.15)
+                      : Colors.white.withOpacity(0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: isSpeaking
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              isUser ? Colors.black : Colors.white,
+                            ),
+                          ),
+                        )
+                      : Icon(
+                          Icons.volume_up,
+                          size: 18,
+                          color: isUser ? Colors.black : Colors.white,
+                        ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -231,6 +446,33 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(width: 12),
           GestureDetector(
+            onTap: _toggleRecording,
+            child: Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: _isRecording
+                    ? Colors.redAccent
+                    : const Color(0xFF1E1E1E),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: _isTranscribing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        _isRecording ? Icons.stop : Icons.mic,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
             onTap: _sendMessage,
             child: Container(
               width: 50,
@@ -249,6 +491,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    final sub = _playerCompleteSub;
+    _playerCompleteSub = null;
+    if (sub != null) unawaited(sub.cancel());
+    unawaited(_audioPlayer.dispose());
+    unawaited(_recorder.dispose());
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();

@@ -11,6 +11,7 @@ import 'package:zimdoctors/services/notification_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:ui';
+import 'package:zimdoctors/utils/date_utils.dart';
 
 class DoctorDashboardScreen extends StatefulWidget {
   static const String id = '/doctor_dashboard_screen';
@@ -83,13 +84,24 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
           _locationController.text = doctor.location;
           _surgeryLocationController.text = doctor.surgeryLocation;
           _phoneController.text = doctor.phoneNumber;
-          _tempAvailableDates = List.from(doctor.availableDates);
-          _tempAvailabilitySlots = Map.from(doctor.availabilitySlots.map(
-            (key, value) => MapEntry(key, List<String>.from(value)),
-          ));
+          final upcomingDates = DateUtilsX.upcomingIsoDates(doctor.availableDates);
+          _tempAvailableDates = List.from(upcomingDates);
+          _tempAvailabilitySlots = Map<String, List<String>>.fromEntries(
+            doctor.availabilitySlots.entries
+                .where((entry) => upcomingDates.contains(entry.key))
+                .map(
+                  (entry) => MapEntry(entry.key, List<String>.from(entry.value)),
+                ),
+          );
         }
       });
     }
+  }
+
+  void _purgePastAvailability() {
+    final upcomingDates = DateUtilsX.upcomingIsoDates(_tempAvailableDates);
+    _tempAvailableDates = List.from(upcomingDates);
+    _tempAvailabilitySlots.removeWhere((key, value) => !upcomingDates.contains(key));
   }
 
   @override
@@ -244,9 +256,51 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent),
             onPressed: () async {
-              await _auth.signOut();
-              if (mounted) {
-                Navigator.pushReplacementNamed(context, LoginScreen.id);
+              final shouldLogout = await showDialog<bool>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  backgroundColor: const Color(0xFF1E1E1E),
+                  title: Text(
+                    'Logout',
+                    style: GoogleFonts.inter(color: Colors.white),
+                  ),
+                  content: Text(
+                    'Are you sure you want to logout?',
+                    style: GoogleFonts.inter(color: Colors.grey[300]),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, false),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, true),
+                      child: const Text(
+                        'Logout',
+                        style: TextStyle(color: Colors.redAccent),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+              if (shouldLogout != true) return;
+              try {
+                await _auth.signOut();
+                if (!mounted) return;
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  LoginScreen.id,
+                  (route) => false,
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Logout failed: $e')),
+                );
               }
             },
           ),
@@ -386,9 +440,94 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
                     color: Colors.grey[400],
                   ),
                 ),
+                if (booking.reason.trim().isNotEmpty)
+                  Text(
+                    booking.reason,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: Colors.grey[500],
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
               ],
             ),
           ),
+          if (booking.status == 'pending') ...[
+            const SizedBox(width: 10),
+            TextButton(
+              onPressed: () async {
+                final shouldConfirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    backgroundColor: const Color(0xFF1E1E1E),
+                    title: Text(
+                      'Confirm appointment?',
+                      style: GoogleFonts.inter(color: Colors.white),
+                    ),
+                    content: Text(
+                      'Confirm ${booking.patientName} on ${booking.date} at ${booking.time}.\n\nReason: ${booking.reason}',
+                      style: GoogleFonts.inter(color: Colors.grey[300]),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, false),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, true),
+                        child: const Text(
+                          'Confirm',
+                          style: TextStyle(color: Color(0xFF57E659)),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (shouldConfirm != true) return;
+                try {
+                  await _doctorService.updateBookingStatus(
+                    booking.id,
+                    'confirmed',
+                  );
+                  await _notificationService.sendNotification(
+                    userId: booking.patientId,
+                    title: 'Appointment Confirmed',
+                    body:
+                        'Dr. ${_currentDoctor!.name} confirmed your appointment on ${booking.date} at ${booking.time}. You can now communicate.',
+                    type: 'booking_confirmed',
+                    data: {
+                      'bookingId': booking.id,
+                      'doctorId': booking.doctorId,
+                      'patientId': booking.patientId,
+                      'date': booking.date,
+                      'time': booking.time,
+                    },
+                  );
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Appointment confirmed.'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to confirm: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Confirm'),
+            ),
+          ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
@@ -453,14 +592,17 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
                     '$date (${_tempAvailabilitySlots[date]?.length ?? 0} slots)',
                     style: const TextStyle(fontSize: 12, color: Colors.white),
                   ),
-                  onPressed: () => _showSlotsDialog(date),
+                  onPressed:
+                      DateUtilsX.isPastDate(date) ? null : () => _showSlotsDialog(date),
                   onDeleted: () {
                     setState(() {
                       _tempAvailableDates.remove(date);
                       _tempAvailabilitySlots.remove(date);
                     });
                   },
-                  backgroundColor: const Color(0xFF1E1E1E),
+                  backgroundColor: DateUtilsX.isPastDate(date)
+                      ? Colors.grey.shade900
+                      : const Color(0xFF1E1E1E),
                   deleteIconColor: Colors.redAccent,
                 ),
               ),
@@ -497,6 +639,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
             child: ElevatedButton(
               onPressed: () async {
                 setState(() => _isLoading = true);
+                _purgePastAvailability();
                 
                 String imageUrl = _currentDoctor!.image;
                 if (_selectedImage != null) {
@@ -514,6 +657,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
                 final updatedDoctor = Doctor(
                   id: _currentDoctor!.id,
                   name: _nameController.text,
+                  registrationNumber: _currentDoctor!.registrationNumber,
                   specialty: _specialtyController.text,
                   rating: _currentDoctor!.rating,
                   image: imageUrl,
@@ -620,11 +764,107 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
           itemCount: notifications.length,
           itemBuilder: (context, index) {
             final notification = notifications[index];
+            final bookingId = (notification.data?['bookingId'] is String)
+                ? notification.data!['bookingId'] as String
+                : null;
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: ListTile(
                 tileColor: const Color(0xFF1E1E1E),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                leading: Icon(
+                  notification.type == 'booking'
+                      ? Icons.calendar_today
+                      : Icons.notifications_outlined,
+                  color: const Color(0xFF57E659),
+                ),
+                onTap: (!isActive ||
+                        notification.type != 'booking' ||
+                        bookingId == null)
+                    ? null
+                    : () async {
+                        final shouldConfirm = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                            backgroundColor: const Color(0xFF1E1E1E),
+                            title: Text(
+                              'Confirm appointment?',
+                              style: GoogleFonts.inter(color: Colors.white),
+                            ),
+                            content: Text(
+                              notification.body,
+                              style: GoogleFonts.inter(color: Colors.grey[300]),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(dialogContext, false),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(dialogContext, true),
+                                child: const Text(
+                                  'Confirm',
+                                  style: TextStyle(color: Color(0xFF57E659)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (shouldConfirm != true) return;
+                        try {
+                          await _doctorService.updateBookingStatus(
+                            bookingId,
+                            'confirmed',
+                          );
+
+                          final patientId =
+                              (notification.data?['patientId'] is String)
+                                  ? notification.data!['patientId'] as String
+                                  : null;
+                          final date = (notification.data?['date'] is String)
+                              ? notification.data!['date'] as String
+                              : '';
+                          final time = (notification.data?['time'] is String)
+                              ? notification.data!['time'] as String
+                              : '';
+                          if (patientId != null && patientId.isNotEmpty) {
+                            await _notificationService.sendNotification(
+                              userId: patientId,
+                              title: 'Appointment Confirmed',
+                              body:
+                                  'Dr. ${_currentDoctor!.name} confirmed your appointment on $date at $time. You can now communicate.',
+                              type: 'booking_confirmed',
+                              data: notification.data,
+                            );
+                          }
+
+                          await _notificationService.moveToHistory(
+                            notification.id,
+                          );
+
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Appointment confirmed.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to confirm: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
                 title: Text(
                   notification.title,
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),

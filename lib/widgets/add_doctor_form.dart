@@ -3,16 +3,18 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:zimdoctors/Screens/home_screen.dart';
 import 'package:zimdoctors/Screens/doctor_dashboard_screen.dart';
 import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
+import 'package:zimdoctors/services/doctor_registry_verification_service.dart';
+import 'package:zimdoctors/services/doctor_verification_service.dart';
 
 class AddDoctorForm extends StatefulWidget {
   static String id = 'add_doctor_screen';
   final String? name;
   final String? phone;
   final String? specialty;
+  final String? registrationNumber;
   final String? imagePath;
   final String email;
   final String password;
@@ -24,6 +26,7 @@ class AddDoctorForm extends StatefulWidget {
     this.name,
     this.phone,
     this.specialty,
+    this.registrationNumber,
     this.imagePath,
   });
 
@@ -34,6 +37,7 @@ class AddDoctorForm extends StatefulWidget {
 class _AddDoctorFormState extends State<AddDoctorForm> {
   final _formKey = GlobalKey<FormState>();
   final _doctorService = DoctorService();
+  final _verificationService = DoctorVerificationService();
   final _auth = FirebaseAuth.instance;
   bool _isLoading = false;
 
@@ -44,6 +48,7 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
   // Controllers
   late TextEditingController _nameController;
   late TextEditingController _specialtyController;
+  late TextEditingController _registrationNumberController;
   final _ratingController = TextEditingController(text: '4.5');
   final _locationController = TextEditingController();
   final _surgeryLocationController = TextEditingController();
@@ -63,6 +68,9 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
     super.initState();
     _nameController = TextEditingController(text: widget.name ?? '');
     _specialtyController = TextEditingController(text: widget.specialty ?? '');
+    _registrationNumberController = TextEditingController(
+      text: widget.registrationNumber ?? '',
+    );
     _phoneController = TextEditingController(text: widget.phone ?? '');
     _codeController.text = 'DOC...'; // Placeholder until auth
     if (widget.imagePath != null) {
@@ -74,6 +82,7 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
   void dispose() {
     _nameController.dispose();
     _specialtyController.dispose();
+    _registrationNumberController.dispose();
     _ratingController.dispose();
     _locationController.dispose();
     _surgeryLocationController.dispose();
@@ -111,6 +120,16 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
       setState(() => _isLoading = true);
 
       try {
+        final outcome = await _verificationService.verifyDoctor(
+          username: _nameController.text.trim(),
+          registrationNumber: _registrationNumberController.text.trim(),
+        );
+        if (!outcome.isVerified) {
+          throw Exception(
+            'Verification failed: doctor not found in registry',
+          );
+        }
+
         // 1. Create User in Firebase Auth
         final userCredential = await _auth.createUserWithEmailAndPassword(
           email: widget.email,
@@ -143,6 +162,7 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
           final newDoctor = Doctor(
             id: uid,
             name: _nameController.text.trim(),
+            registrationNumber: _registrationNumberController.text.trim(),
             specialty: _specialtyController.text.trim(),
             rating: double.tryParse(_ratingController.text) ?? 0.0,
             image: imageUrl,
@@ -158,6 +178,10 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
             description: _descriptionController.text.trim(),
             availableDates: [],
             availabilitySlots: {},
+            isVerified: true,
+            verifiedAt: outcome.verifiedAt,
+            verificationProvider: outcome.verificationProvider,
+            verificationUrl: outcome.verificationUrl,
           );
 
           await _doctorService.createDoctor(newDoctor);
@@ -181,9 +205,16 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
         }
       } catch (e) {
         if (mounted) {
+          final message = switch (e) {
+            DoctorRegistryConfigException _ =>
+              'Verification not configured. Please contact support.',
+            DoctorRegistryVerificationException _ =>
+              'Verification service error. Please try again later.',
+            _ => 'Error creating profile: $e',
+          };
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('Error creating profile: $e')));
+          ).showSnackBar(SnackBar(content: Text(message)));
         }
       } finally {
         if (mounted) setState(() => _isLoading = false);
@@ -258,6 +289,18 @@ class _AddDoctorFormState extends State<AddDoctorForm> {
                 ),
                 const SizedBox(height: 20),
 
+                _buildTextField(
+                  label: 'Full Name (Username)',
+                  controller: _nameController,
+                ),
+                _buildTextField(
+                  label: 'Registration Number',
+                  controller: _registrationNumberController,
+                ),
+                _buildTextField(
+                  label: 'Specialty',
+                  controller: _specialtyController,
+                ),
                 _buildTextField(
                   label: 'City / Area',
                   controller: _locationController,

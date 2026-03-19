@@ -103,12 +103,20 @@ class DoctorService {
   
   Future<void> createBooking(Booking booking) async {
     try {
-      await _firestore.collection('bookings').add(booking.toMap());
+      final docRef = await _firestore.collection('bookings').add(booking.toMap());
       await _notificationService.sendNotification(
         userId: booking.doctorId,
         title: 'New Appointment',
-        body: 'You have a new booking from ${booking.patientName} on ${booking.date} at ${booking.time}',
+        body: 'You have a new booking from ${booking.patientName} on ${booking.date} at ${booking.time}. Reason: ${booking.reason}',
         type: 'booking',
+        data: {
+          'bookingId': docRef.id,
+          'doctorId': booking.doctorId,
+          'patientId': booking.patientId,
+          'date': booking.date,
+          'time': booking.time,
+          'reason': booking.reason,
+        },
       );
     } catch (e) {
       print('Error creating booking: $e');
@@ -117,6 +125,7 @@ class DoctorService {
   }
 
   Future<void> createBookingAtomic(Booking booking) async {
+    late DocumentReference<Map<String, dynamic>> docRef;
     await _firestore.runTransaction((transaction) async {
       
       final querySnapshot = await _firestore
@@ -131,7 +140,7 @@ class DoctorService {
         throw Exception('This slot has already been booked by another patient.');
       }
 
-      final docRef = _firestore.collection('bookings').doc();
+      docRef = _firestore.collection('bookings').doc();
       transaction.set(docRef, booking.toMap());
     });
 
@@ -139,9 +148,23 @@ class DoctorService {
     await _notificationService.sendNotification(
       userId: booking.doctorId,
       title: 'New Appointment',
-      body: 'You have a new booking from ${booking.patientName} on ${booking.date} at ${booking.time}',
+      body: 'You have a new booking from ${booking.patientName} on ${booking.date} at ${booking.time}. Reason: ${booking.reason}',
       type: 'booking',
+      data: {
+        'bookingId': docRef.id,
+        'doctorId': booking.doctorId,
+        'patientId': booking.patientId,
+        'date': booking.date,
+        'time': booking.time,
+        'reason': booking.reason,
+      },
     );
+  }
+
+  Future<void> updateBookingStatus(String bookingId, String status) async {
+    await _firestore.collection('bookings').doc(bookingId).update({
+      'status': status,
+    });
   }
 
   Stream<List<Booking>> getBookingsForDoctor(String doctorId) {

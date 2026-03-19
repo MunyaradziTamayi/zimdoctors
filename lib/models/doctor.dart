@@ -1,6 +1,7 @@
 class Doctor {
   final String id;
   final String name;
+  final String registrationNumber;
   final String specialty;
   final double rating;
   final String image;
@@ -16,10 +17,15 @@ class Doctor {
   final String description;
   final List<String> availableDates;
   final Map<String, List<String>> availabilitySlots;
+  final bool isVerified;
+  final DateTime? verifiedAt;
+  final String verificationProvider;
+  final String verificationUrl;
 
   Doctor({
     required this.id,
     required this.name,
+    required this.registrationNumber,
     required this.specialty,
     required this.rating,
     required this.image,
@@ -35,6 +41,10 @@ class Doctor {
     required this.description,
     required this.availableDates,
     required this.availabilitySlots,
+    this.isVerified = false,
+    this.verifiedAt,
+    this.verificationProvider = '',
+    this.verificationUrl = '',
   });
 
   factory Doctor.fromMap(Map<String, dynamic> map, String documentId) {
@@ -48,6 +58,7 @@ class Doctor {
     return Doctor(
       id: documentId,
       name: map['name'] ?? '',
+      registrationNumber: map['registrationNumber'] ?? '',
       specialty: map['specialty'] ?? '',
       rating: (map['rating'] as num?)?.toDouble() ?? 0.0,
       image: map['image'] ?? '',
@@ -63,12 +74,17 @@ class Doctor {
       description: map['description'] ?? '',
       availableDates: List<String>.from(map['availableDates'] ?? []),
       availabilitySlots: slots,
+      isVerified: map['isVerified'] ?? false,
+      verifiedAt: _mapToDateTime(map['verifiedAt']),
+      verificationProvider: map['verificationProvider'] ?? '',
+      verificationUrl: map['verificationUrl'] ?? '',
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
       'name': name,
+      'registrationNumber': registrationNumber,
       'specialty': specialty,
       'rating': rating,
       'image': image,
@@ -84,6 +100,23 @@ class Doctor {
       'description': description,
       'availableDates': availableDates,
       'availabilitySlots': availabilitySlots,
+      'isVerified': isVerified,
+      'verifiedAt': verifiedAt,
+      'verificationProvider': verificationProvider,
+      'verificationUrl': verificationUrl,
     };
+  }
+
+  static DateTime? _mapToDateTime(dynamic value) {
+    if (value == null) return null;
+    // Firestore Timestamp has a `toDate()` method, but we avoid importing it here.
+    try {
+      final dynamic toDate = (value as dynamic).toDate;
+      if (toDate is Function) {
+        final d = toDate.call();
+        if (d is DateTime) return d;
+      }
+    } catch (_) {}
+    return value is DateTime ? value : null;
   }
 }

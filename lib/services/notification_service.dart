@@ -10,6 +10,7 @@ class NotificationService {
     required String title,
     required String body,
     required String type,
+    Map<String, dynamic>? data,
   }) async {
     final notification = SystemNotification(
       id: '',
@@ -17,6 +18,7 @@ class NotificationService {
       title: title,
       body: body,
       type: type,
+      data: data,
       timestamp: DateTime.now(),
     );
 

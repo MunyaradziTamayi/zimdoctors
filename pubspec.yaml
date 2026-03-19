@@ -37,6 +37,12 @@ dependencies:
   google_fonts: ^6.1.0
   font_awesome_flutter: ^10.6.0
   image_picker: ^1.0.7
+  http: ^1.2.2
+  http_parser: ^4.1.2
+  path_provider: ^2.1.5
+  flutter_dotenv: ^5.2.0
+  record: ^6.0.0
+  audioplayers: ^6.1.0
   firebase_core: ^4.4.0
   firebase_auth: ^6.1.4
   cloud_firestore: ^6.1.2
@@ -63,6 +69,7 @@ flutter:
 
   
   assets:
+    - .env
     - assets/images/
     
 

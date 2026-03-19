@@ -6,6 +6,7 @@ class SystemNotification {
   final String title;
   final String body;
   final String type;
+  final Map<String, dynamic>? data;
   final DateTime timestamp;
   final bool isRead;
   final String status; // 'active', 'history'
@@ -16,6 +17,7 @@ class SystemNotification {
     required this.title,
     required this.body,
     required this.type,
+    this.data,
     required this.timestamp,
     this.isRead = false,
     this.status = 'active',
@@ -28,6 +30,9 @@ class SystemNotification {
       title: map['title'] ?? '',
       body: map['body'] ?? '',
       type: map['type'] ?? '',
+      data: (map['data'] is Map<String, dynamic>)
+          ? (map['data'] as Map<String, dynamic>)
+          : null,
       timestamp: (map['timestamp'] as Timestamp).toDate(),
       isRead: map['isRead'] ?? false,
       status: map['status'] ?? 'active',
@@ -40,6 +45,7 @@ class SystemNotification {
       'title': title,
       'body': body,
       'type': type,
+      if (data != null) 'data': data,
       'timestamp': Timestamp.fromDate(timestamp),
       'isRead': isRead,
       'status': status,

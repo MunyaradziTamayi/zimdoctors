@@ -8,6 +8,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:zimdoctors/utils/date_utils.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class DoctorDetailScreen extends StatelessWidget {
   static const String id = '/doctor_detail_screen';
@@ -15,8 +17,23 @@ class DoctorDetailScreen extends StatelessWidget {
 
   const DoctorDetailScreen({super.key, required this.doctor});
 
+  Future<bool> _hasConfirmedBooking() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('bookings')
+        .where('doctorId', isEqualTo: doctor.id)
+        .where('patientId', isEqualTo: user.uid)
+        .where('status', isEqualTo: 'confirmed')
+        .limit(1)
+        .get();
+    return snapshot.docs.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final upcomingDates = DateUtilsX.upcomingIsoDates(doctor.availableDates);
     return Scaffold(
       backgroundColor: Colors.black,
       body: SingleChildScrollView(
@@ -196,14 +213,14 @@ class DoctorDetailScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  doctor.availableDates.isNotEmpty
+                  upcomingDates.isNotEmpty
                       ? SizedBox(
                           height: 50,
                           child: ListView.builder(
                             scrollDirection: Axis.horizontal,
-                            itemCount: doctor.availableDates.length,
+                            itemCount: upcomingDates.length,
                             itemBuilder: (context, index) {
-                              final date = doctor.availableDates[index];
+                              final date = upcomingDates[index];
                               final parsedDate = DateTime.parse(date);
                               return Container(
                                 margin: const EdgeInsets.only(right: 12),
@@ -261,100 +278,136 @@ class DoctorDetailScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildCommunicationItem(
-                    icon: Icons.chat_bubble_outline,
-                    title: 'Messaging',
-                    subtitle: 'Send SMS to the doctor',
-                    color: const Color(0xFF422121),
-                    iconColor: Colors.pink[200]!,
-                    onTap: () async {
-                      try {
-                        final Uri smsUri = Uri(
-                          scheme: 'sms',
-                          path: doctor.phoneNumber,
-                          queryParameters: <String, String>{
-                            'body': 'Hello Dr. ${doctor.name}, ',
-                          },
-                        );
-                        if (await canLaunchUrl(smsUri)) {
-                          await launchUrl(
-                            smsUri,
-                            mode: LaunchMode.externalApplication,
+                  FutureBuilder<bool>(
+                    future: _hasConfirmedBooking(),
+                    builder: (context, snapshot) {
+                      final canCommunicate = snapshot.data == true;
+                      final gateMessage =
+                          'Communication is unlocked after the doctor confirms your appointment.';
+
+                      Future<void> guardAndRun(Future<void> Function() action) async {
+                        final user = FirebaseAuth.instance.currentUser;
+                        if (user == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please login first.'),
+                            ),
                           );
-                        } else {
-                          throw 'Could not launch SMS app';
+                          return;
                         }
-                      } catch (e) {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text('Error: $e')));
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _buildCommunicationItem(
-                    icon: FontAwesomeIcons.whatsapp,
-                    title: 'WhatsApp',
-                    subtitle: 'WhatsApp your doctor directly.',
-                    color: const Color(0xFF1E2F2F),
-                    iconColor: Colors.green[400]!,
-                    onTap: () async {
-                      try {
-                        String phoneNumber = doctor.phoneNumber.replaceAll(
-                          RegExp(r'[^\d+]'),
-                          '',
-                        );
-                        if (!phoneNumber.startsWith('+')) {
-                          if (phoneNumber.startsWith('0')) {
-                            phoneNumber = '+263${phoneNumber.substring(1)}';
-                          } else {
-                            phoneNumber = '+263$phoneNumber';
-                          }
-                        }
-                        final Uri whatsappUri = Uri.parse(
-                          'https://wa.me/${phoneNumber.replaceAll('+', '')}',
-                        );
-                        if (await canLaunchUrl(whatsappUri)) {
-                          await launchUrl(
-                            whatsappUri,
-                            mode: LaunchMode.externalApplication,
+                        final allowed = await _hasConfirmedBooking();
+                        if (!allowed) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(gateMessage)),
                           );
-                        } else {
-                          throw 'Could not launch WhatsApp';
+                          return;
                         }
-                      } catch (e) {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text('Error: $e')));
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _buildCommunicationItem(
-                    icon: Icons.call_outlined,
-                    title: 'Call Doctor',
-                    subtitle: 'Call your doctor directly.',
-                    color: const Color(0xFF1E2832),
-                    iconColor: Colors.blue[300]!,
-                    onTap: () async {
-                      try {
-                        final Uri telUri = Uri(
-                          scheme: 'tel',
-                          path: doctor.phoneNumber,
-                        );
-                        if (await canLaunchUrl(telUri)) {
-                          await launchUrl(
-                            telUri,
-                            mode: LaunchMode.externalApplication,
+                        try {
+                          await action();
+                        } catch (e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error: $e')),
                           );
-                        } else {
-                          throw 'Could not launch dialer';
                         }
-                      } catch (e) {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text('Error: $e')));
                       }
+
+                      return Column(
+                        children: [
+                          _buildCommunicationItem(
+                            icon: Icons.chat_bubble_outline,
+                            title: 'Messaging',
+                            subtitle: canCommunicate
+                                ? 'Send SMS to the doctor'
+                                : gateMessage,
+                            color: const Color(0xFF422121),
+                            iconColor: Colors.pink[200]!,
+                            onTap: () {
+                              guardAndRun(() async {
+                                final Uri smsUri = Uri(
+                                  scheme: 'sms',
+                                  path: doctor.phoneNumber,
+                                  queryParameters: <String, String>{
+                                    'body': 'Hello Dr. ${doctor.name}, ',
+                                  },
+                                );
+                                if (await canLaunchUrl(smsUri)) {
+                                  await launchUrl(
+                                    smsUri,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                } else {
+                                  throw 'Could not launch SMS app';
+                                }
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          _buildCommunicationItem(
+                            icon: FontAwesomeIcons.whatsapp,
+                            title: 'WhatsApp',
+                            subtitle: canCommunicate
+                                ? 'WhatsApp your doctor directly.'
+                                : gateMessage,
+                            color: const Color(0xFF1E2F2F),
+                            iconColor: Colors.green[400]!,
+                            onTap: () {
+                              guardAndRun(() async {
+                                String phoneNumber =
+                                    doctor.phoneNumber.replaceAll(
+                                  RegExp(r'[^\d+]'),
+                                  '',
+                                );
+                                if (!phoneNumber.startsWith('+')) {
+                                  if (phoneNumber.startsWith('0')) {
+                                    phoneNumber =
+                                        '+263${phoneNumber.substring(1)}';
+                                  } else {
+                                    phoneNumber = '+263$phoneNumber';
+                                  }
+                                }
+                                final Uri whatsappUri = Uri.parse(
+                                  'https://wa.me/${phoneNumber.replaceAll('+', '')}',
+                                );
+                                if (await canLaunchUrl(whatsappUri)) {
+                                  await launchUrl(
+                                    whatsappUri,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                } else {
+                                  throw 'Could not launch WhatsApp';
+                                }
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          _buildCommunicationItem(
+                            icon: Icons.call_outlined,
+                            title: 'Call Doctor',
+                            subtitle: canCommunicate
+                                ? 'Call your doctor directly.'
+                                : gateMessage,
+                            color: const Color(0xFF1E2832),
+                            iconColor: Colors.blue[300]!,
+                            onTap: () {
+                              guardAndRun(() async {
+                                final Uri telUri = Uri(
+                                  scheme: 'tel',
+                                  path: doctor.phoneNumber,
+                                );
+                                if (await canLaunchUrl(telUri)) {
+                                  await launchUrl(
+                                    telUri,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                } else {
+                                  throw 'Could not launch dialer';
+                                }
+                              });
+                            },
+                          ),
+                        ],
+                      );
                     },
                   ),
                   const SizedBox(height: 40),
@@ -390,10 +443,12 @@ class DoctorDetailScreen extends StatelessWidget {
   }
 
   void _showBookingDialog(BuildContext context) async {
-    if (doctor.availableDates.isEmpty) {
+    final upcomingDates = DateUtilsX.upcomingIsoDates(doctor.availableDates);
+
+    if (upcomingDates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('This doctor has not set any available dates yet.'),
+          content: Text('No upcoming dates available for this doctor.'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -414,9 +469,9 @@ class DoctorDetailScreen extends StatelessWidget {
             width: double.maxFinite,
             child: ListView.builder(
               shrinkWrap: true,
-              itemCount: doctor.availableDates.length,
+              itemCount: upcomingDates.length,
               itemBuilder: (context, index) {
-                final date = doctor.availableDates[index];
+                final date = upcomingDates[index];
                 return ListTile(
                   title: Text(
                     DateFormat(
@@ -437,6 +492,18 @@ class DoctorDetailScreen extends StatelessWidget {
     );
 
     if (selectedDate != null) {
+      if (DateUtilsX.isPastDate(selectedDate!)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('That date has already passed. Pick another date.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
       final List<String> availableSlots = doctor.availabilitySlots[selectedDate] ??
           [];
 
@@ -532,6 +599,16 @@ class DoctorDetailScreen extends StatelessWidget {
           return;
         }
 
+        // Ask for booking reason (required)
+        String? reason;
+        if (context.mounted) {
+          reason = await showDialog<String>(
+            context: context,
+            builder: (dialogContext) => const _BookingReasonDialog(),
+          );
+        }
+        if (reason == null || reason.trim().isEmpty) return;
+
         // Show Payment Modal
         if (context.mounted) {
           final paymentResult = await _showPaymentModal(
@@ -547,9 +624,10 @@ class DoctorDetailScreen extends StatelessWidget {
               patientId: user.uid,
               patientName:
                   user.displayName ?? user.email?.split('@').first ?? 'Patient',
+              reason: reason.trim(),
               date: selectedDate!,
               time: selectedSlot!,
-              status: 'confirmed', // Confirmed if paid
+              status: 'pending', // Doctor must confirm before communication is enabled
               paymentStatus: 'paid',
               transactionRef: paymentResult['reference'],
               amount: doctor.fee.toDouble(),
@@ -561,8 +639,10 @@ class DoctorDetailScreen extends StatelessWidget {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Booking confirmed! Payment successful.'),
-                    backgroundColor: Colors.green,
+                    content: Text(
+                      'Booking created! Awaiting doctor confirmation. Payment successful.',
+                    ),
+                    backgroundColor: Colors.orange,
                   ),
                 );
               }
@@ -1013,6 +1093,76 @@ class DoctorDetailScreen extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _BookingReasonDialog extends StatefulWidget {
+  const _BookingReasonDialog();
+
+  @override
+  State<_BookingReasonDialog> createState() => _BookingReasonDialogState();
+}
+
+class _BookingReasonDialogState extends State<_BookingReasonDialog> {
+  final _controller = TextEditingController();
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      title: Text(
+        'Reason for booking',
+        style: GoogleFonts.inter(color: Colors.white),
+      ),
+      content: TextField(
+        controller: _controller,
+        maxLines: 3,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: 'e.g. Headache for 3 days...',
+          hintStyle: TextStyle(color: Colors.grey[600]),
+          errorText: _errorText,
+          enabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.grey[800]!),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: const BorderSide(color: Color(0xFF57E659)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+        TextButton(
+          onPressed: () {
+            final trimmed = _controller.text.trim();
+            if (trimmed.isEmpty) {
+              setState(() => _errorText = 'Reason is required');
+              return;
+            }
+            Navigator.pop(context, trimmed);
+          },
+          child: const Text(
+            'Continue',
+            style: TextStyle(color: Color(0xFF57E659)),
+          ),
+        ),
+      ],
     );
   }
 }

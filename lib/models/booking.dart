@@ -5,6 +5,7 @@ class Booking {
   final String doctorId;
   final String patientId;
   final String patientName;
+  final String reason;
   final String date;
   final String time;
   final String status; // 'pending', 'confirmed', 'cancelled'
@@ -18,6 +19,7 @@ class Booking {
     required this.doctorId,
     required this.patientId,
     required this.patientName,
+    required this.reason,
     required this.date,
     required this.time,
     required this.status,
@@ -33,6 +35,7 @@ class Booking {
       doctorId: map['doctorId'] ?? '',
       patientId: map['patientId'] ?? '',
       patientName: map['patientName'] ?? '',
+      reason: map['reason'] ?? '',
       date: map['date'] ?? '',
       time: map['time'] ?? '',
       status: map['status'] ?? 'pending',
@@ -50,6 +53,7 @@ class Booking {
       'doctorId': doctorId,
       'patientId': patientId,
       'patientName': patientName,
+      'reason': reason,
       'date': date,
       'time': time,
       'status': status,

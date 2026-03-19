@@ -22,6 +22,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _auth = FirebaseAuth.instance;
 
   final _fullNameController = TextEditingController();
+  final _registrationNumberController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController(text: '+263 ');
   final _passwordController = TextEditingController();
@@ -35,6 +36,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   @override
   void dispose() {
     _fullNameController.dispose();
+    _registrationNumberController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
@@ -224,6 +226,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 const SizedBox(height: 20),
 
                 if (isDoctor) ...[
+                  buildLabel('Registration Number'),
+                  buildTextField(
+                    controller: _registrationNumberController,
+                    onChanged: (value) {},
+                    hint: 'e.g. MCZ-12345',
+                    icon: Icons.badge_outlined,
+                  ),
+                  const SizedBox(height: 20),
+
                   buildLabel('Specialization'),
                   buildTextField(
                     controller: _specializationController,
@@ -255,6 +266,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           _emailController.text.isEmpty ||
                           _passwordController.text.isEmpty ||
                           _phoneController.text.isEmpty ||
+                          (isDoctor &&
+                              _registrationNumberController.text.isEmpty) ||
                           (isDoctor &&
                               _specializationController.text.isEmpty)) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -300,6 +313,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                                 'phone': _phoneController.text.trim(),
                                 'specialty': _specializationController.text
                                     .trim(),
+                                'registrationNumber':
+                                    _registrationNumberController.text.trim(),
                                 'imagePath': _image?.path,
                               },
                             );

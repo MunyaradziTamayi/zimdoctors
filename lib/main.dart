@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:zimdoctors/Screens/ai_chat_screen.dart';
 import 'package:zimdoctors/Screens/home_screen.dart';
 import 'package:zimdoctors/Screens/login_screen.dart';
@@ -13,6 +14,14 @@ import 'package:zimdoctors/models/doctor.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    // Allow app to run even if .env isn't present (e.g. CI/build servers).
+    // Still log so it's easier to debug "API key not configured" issues.
+    // ignore: avoid_print
+    print('Warning: failed to load .env: $e');
+  }
   await Firebase.initializeApp();
   runApp(zimdoctors());
 }
@@ -50,6 +59,7 @@ class zimdoctors extends StatelessWidget {
             name: args['name'],
             phone: args['phone'],
             specialty: args['specialty'],
+            registrationNumber: args['registrationNumber'],
             imagePath: args['imagePath'],
           );
         },
