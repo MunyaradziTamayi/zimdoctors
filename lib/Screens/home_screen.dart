@@ -709,6 +709,66 @@ class _HomescreenState extends State<Homescreen> {
                                         ),
                                       ),
                                     ),
+                                    const SizedBox(height: 12),
+                                    // Book Doctor Button
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(24),
+                                      child: BackdropFilter(
+                                        filter: ImageFilter.blur(
+                                          sigmaX: 5,
+                                          sigmaY: 5,
+                                        ),
+                                        child: Container(
+                                          width: double.infinity,
+                                          height: 50,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF57E659)
+                                                .withOpacity(0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(24),
+                                            border: Border.all(
+                                              color: const Color(0xFF57E659)
+                                                  .withOpacity(0.35),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: ElevatedButton(
+                                            onPressed: _showBookDoctorDialog,
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.transparent,
+                                              shadowColor: Colors.transparent,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(24),
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                const Icon(
+                                                  Icons.calendar_month,
+                                                  color: Color(0xFF57E659),
+                                                  size: 18,
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Text(
+                                                  'Book a Doctor',
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 15,
+                                                    fontWeight:
+                                                        FontWeight.w800,
+                                                    color:
+                                                        const Color(0xFF57E659),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                     const SizedBox(height: 10), // Reduced from 20
                                   ],
                                 ),
@@ -1404,6 +1464,73 @@ class _HomescreenState extends State<Homescreen> {
           color: isSelected ? Colors.black : Colors.grey,
           size: 24,
         ),
+      ),
+    );
+  }
+
+  Future<void> _showBookDoctorDialog() async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          'Book an appointment',
+          style: GoogleFonts.inter(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          'Do you already know which doctor you want to see?',
+          style: GoogleFonts.inter(color: Colors.grey[300], height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ChatScreen(recommendDoctor: true),
+                ),
+              );
+            },
+            child: Text(
+              "No, help me choose",
+              style: GoogleFonts.inter(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const DoctorsScreen(autofocusSearch: true),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF57E659),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Yes, search',
+              style: GoogleFonts.inter(
+                color: Colors.black,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

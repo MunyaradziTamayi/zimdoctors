@@ -8,7 +8,10 @@ import 'package:zimdoctors/utils/availability_utils.dart';
 
 class DoctorsScreen extends StatefulWidget {
   static const String id = '/doctors_screen';
-  const DoctorsScreen({super.key});
+  final String? initialQuery;
+  final bool autofocusSearch;
+
+  const DoctorsScreen({super.key, this.initialQuery, this.autofocusSearch = false});
 
   @override
   State<DoctorsScreen> createState() => _DoctorsScreenState();
@@ -18,6 +21,22 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   final DoctorService _doctorService = DoctorService();
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialQuery?.trim() ?? '';
+    if (initial.isNotEmpty) {
+      _searchController.text = initial;
+      _searchQuery = initial.toLowerCase();
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +53,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
           ),
           child: TextField(
             controller: _searchController,
+            autofocus: widget.autofocusSearch,
             onChanged: (value) {
               setState(() {
                 _searchQuery = value.toLowerCase();
@@ -135,7 +155,9 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
               crossAxisCount: 2,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio: 0.64, // Adjusted height to prevent bottom overflow
+              // Use a fixed tile height to avoid RenderFlex overflow on smaller screens
+              // when optional fields (e.g. surgery location) are present.
+              mainAxisExtent: 305,
             ),
             itemCount: doctors.length,
             itemBuilder: (context, index) {
@@ -257,12 +279,16 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                             color: Colors.amber[400],
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            'Fee: \$${doctor.fee}',
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              color: Colors.amber[400],
-                              fontWeight: FontWeight.w600,
+                          Flexible(
+                            child: Text(
+                              'Fee: \$${doctor.fee}',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: Colors.amber[400],
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],

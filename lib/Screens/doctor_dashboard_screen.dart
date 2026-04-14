@@ -498,7 +498,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
                     userId: booking.patientId,
                     title: 'Appointment Confirmed',
                     body:
-                        'Dr. ${_currentDoctor!.name} confirmed your appointment on ${booking.date} at ${booking.time}. You can now communicate.',
+                        'Dr. ${_currentDoctor!.name} confirmed your appointment on ${booking.date} at ${booking.time}. Communication is available during the booked slot (paid appointments only).',
                     type: 'booking_confirmed',
                     data: {
                       'bookingId': booking.id,
@@ -838,7 +838,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
                               userId: patientId,
                               title: 'Appointment Confirmed',
                               body:
-                                  'Dr. ${_currentDoctor!.name} confirmed your appointment on $date at $time. You can now communicate.',
+                                  'Dr. ${_currentDoctor!.name} confirmed your appointment on $date at $time. Communication is available during the booked slot (paid appointments only).',
                               type: 'booking_confirmed',
                               data: notification.data,
                             );

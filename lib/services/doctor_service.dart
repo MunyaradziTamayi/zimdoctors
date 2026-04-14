@@ -5,6 +5,7 @@ import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/models/booking.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:zimdoctors/services/notification_service.dart';
+import 'package:zimdoctors/services/disease_api_service.dart';
 
 class DoctorService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -13,6 +14,7 @@ class DoctorService {
   final FirebaseStorage _storage = FirebaseStorage.instanceFor(
     bucket: 'zimdoctors-1021d.firebasestorage.app',
   );
+  final DiseaseApiService _apiService = DiseaseApiService.fromEnv();
 
   // Get stream of all doctors
   Stream<List<Doctor>> getDoctors() {
@@ -167,6 +169,83 @@ class DoctorService {
     });
   }
 
+  Future<void> rescheduleBookingAtomic({
+    required String bookingId,
+    required String newDate,
+    required String newTime,
+  }) async {
+    String doctorId = '';
+    String patientName = 'Patient';
+    String oldDate = '';
+    String oldTime = '';
+
+    await _firestore.runTransaction((transaction) async {
+      final bookingRef = _firestore.collection('bookings').doc(bookingId);
+      final bookingSnap = await transaction.get(bookingRef);
+      if (!bookingSnap.exists) {
+        throw Exception('Booking not found.');
+      }
+
+      final data = bookingSnap.data() as Map<String, dynamic>;
+      final status = (data['status'] ?? 'pending') as String;
+      final paymentStatus = (data['paymentStatus'] ?? 'unpaid') as String;
+
+      if (status == 'cancelled') {
+        throw Exception('This booking has been cancelled.');
+      }
+      if (paymentStatus != 'paid') {
+        throw Exception('Only paid bookings can be rescheduled.');
+      }
+
+      doctorId = (data['doctorId'] ?? '') as String;
+      patientName = (data['patientName'] ?? 'Patient') as String;
+      oldDate = (data['date'] ?? '') as String;
+      oldTime = (data['time'] ?? '') as String;
+
+      if (doctorId.isEmpty) {
+        throw Exception('Booking is missing doctorId.');
+      }
+
+      final existing = await _firestore
+          .collection('bookings')
+          .where('doctorId', isEqualTo: doctorId)
+          .where('date', isEqualTo: newDate)
+          .where('time', isEqualTo: newTime)
+          .where('status', isNotEqualTo: 'cancelled')
+          .get();
+
+      final conflict = existing.docs.any((d) => d.id != bookingId);
+      if (conflict) {
+        throw Exception('That slot is already booked.');
+      }
+
+      transaction.update(bookingRef, {
+        'date': newDate,
+        'time': newTime,
+        'status': 'pending',
+        'rescheduledAt': FieldValue.serverTimestamp(),
+        'rescheduledFrom': {'date': oldDate, 'time': oldTime},
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+
+    await _notificationService.sendNotification(
+      userId: doctorId,
+      title: 'Appointment Rescheduled',
+      body:
+          '$patientName requested to reschedule: $oldDate $oldTime → $newDate $newTime. Please confirm the new slot.',
+      type: 'booking_reschedule',
+      data: {
+        'bookingId': bookingId,
+        'doctorId': doctorId,
+        'date': newDate,
+        'time': newTime,
+        'oldDate': oldDate,
+        'oldTime': oldTime,
+      },
+    );
+  }
+
   Stream<List<Booking>> getBookingsForDoctor(String doctorId) {
     return _firestore
         .collection('bookings')
@@ -205,6 +284,43 @@ class DoctorService {
     } catch (e) {
       print('Error checking slot: $e');
       return false;
+    }
+  }
+
+  /// AI-Powered Doctor Match
+  /// Uses symptoms to find the best specialist and returns matching doctors from Firestore.
+  Future<List<Doctor>> findDoctorMatch(String symptoms) async {
+    try {
+      // 1. Get specialist recommendation from AI
+      final diagnosis = await _apiService.predictFromText(symptoms);
+      final specialist = diagnosis.suggestedSpecialist;
+
+      if (specialist == null || specialist == 'General Practitioner') {
+        // If no specific specialist, return top rated or all
+        final snapshot = await _firestore.collection(_collectionName).limit(10).get();
+        return snapshot.docs.map((doc) => Doctor.fromMap(doc.data(), doc.id)).toList();
+      }
+
+      // 2. Search Firestore for doctors with that specialty
+      // Note: This assumes the 'specialization' field in Firestore matches the specialist string
+      final querySnapshot = await _firestore
+          .collection(_collectionName)
+          .where('specialization', isEqualTo: specialist)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        // Fallback to keyword search if exact match fails
+        final allDocs = await _firestore.collection(_collectionName).get();
+        return allDocs.docs
+            .map((doc) => Doctor.fromMap(doc.data(), doc.id))
+            .where((doc) => doc.specialization.toLowerCase().contains(specialist.toLowerCase()))
+            .toList();
+      }
+
+      return querySnapshot.docs.map((doc) => Doctor.fromMap(doc.data(), doc.id)).toList();
+    } catch (e) {
+      print('Error in doctor matching: $e');
+      return [];
     }
   }
 }

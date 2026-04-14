@@ -1,13 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:record/record.dart';
-import 'package:zimdoctors/services/elevenlabs_service.dart';
+import 'package:stts/stts.dart';
+import 'package:zimdoctors/services/disease_api_service.dart';
+import 'package:zimdoctors/Screens/doctors_screen.dart';
+import 'package:zimdoctors/utils/doctor_recommendation_utils.dart';
+import 'package:zimdoctors/models/diagnosis_response.dart';
 
 class Message {
   final String text;
@@ -19,8 +19,9 @@ class Message {
 
 class ChatScreen extends StatefulWidget {
   static const String id = 'chat_screen';
+  final bool recommendDoctor;
 
-  const ChatScreen({super.key});
+  const ChatScreen({super.key, this.recommendDoctor = false});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -33,50 +34,132 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  final AudioRecorder _recorder = AudioRecorder();
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  StreamSubscription<void>? _playerCompleteSub;
-  File? _currentTtsFile;
-  ElevenLabsService? _elevenLabs;
-  String? _elevenLabsInitError;
+  final Stt _stt = Stt();
+  final Tts _tts = Tts();
+  StreamSubscription<SttRecognition>? _sttResultSub;
+  StreamSubscription<SttState>? _sttStateSub;
+  StreamSubscription<TtsState>? _ttsStateSub;
+
+  String? _voiceInitError;
+  String _lastRecognitionText = '';
+  bool _commitRecognitionOnStop = false;
+  DiseaseApiService? _diseaseApi;
+  String? _diseaseApiInitError;
 
   bool _isRecording = false;
   bool _isTranscribing = false;
+  bool _isAwaitingAi = false;
   int? _speakingMessageIndex;
 
-  final List<Message> _messages = [
-    Message(
-      text:
-          "Hello! I'm your Zim Doctors AI health assistant. How can I help you today?",
-      sender: 'AI', // Mock sender
-      timestamp: DateTime.now(),
-    ),
-  ];
+  String? _selectedLanguage;
+
+  final List<Message> _messages = [];
+  String? _recommendedSearchQuery;
 
   @override
   void initState() {
     super.initState();
     getCurrentUser();
-    _initElevenLabs();
+    _initDiseaseApi();
+    _initSpeech();
 
-    _playerCompleteSub = _audioPlayer.onPlayerComplete.listen((_) async {
-      final fileToDelete = _currentTtsFile;
-      _currentTtsFile = null;
-      if (fileToDelete != null) {
-        try {
-          if (await fileToDelete.exists()) await fileToDelete.delete();
-        } catch (_) {}
+    _messages.add(
+      Message(
+        text: widget.recommendDoctor
+            ? "Hi! Describe your symptoms and I’ll suggest what kind of doctor to see. Then you can search and book."
+            : "Hello! I'm your Zim Doctors AI health assistant. How can I help you today?",
+        sender: 'AI',
+        timestamp: DateTime.now(),
+      ),
+    );
+  }
+
+  void _initSpeech() {
+    _ttsStateSub = _tts.onStateChanged.listen((state) {
+      if (!mounted) return;
+      if (state == TtsState.stop) {
+        setState(() => _speakingMessageIndex = null);
       }
+    }, onError: (_) {
       if (!mounted) return;
       setState(() => _speakingMessageIndex = null);
     });
+
+    _sttResultSub = _stt.onResultChanged.listen((result) {
+      _lastRecognitionText = result.text;
+    });
+
+    _sttStateSub = _stt.onStateChanged.listen((state) {
+      if (state != SttState.stop) return;
+      if (!mounted) return;
+
+      if (_isRecording) {
+        setState(() => _isRecording = false);
+      }
+
+      if (_commitRecognitionOnStop) {
+        _commitRecognitionOnStop = false;
+        final recognized = _lastRecognitionText.trim();
+        if (recognized.isNotEmpty) {
+          setState(() {
+            _controller.text = recognized;
+            _controller.selection = TextSelection.fromPosition(
+              TextPosition(offset: _controller.text.length),
+            );
+          });
+        }
+        if (_isTranscribing) {
+          setState(() => _isTranscribing = false);
+        }
+      }
+    }, onError: (e) {
+      if (!mounted) return;
+      setState(() {
+        _voiceInitError = 'Speech recognition error: $e';
+        _isRecording = false;
+        _isTranscribing = false;
+      });
+    });
+
+    unawaited(_configureTtsDefaults());
+    unawaited(_checkVoiceSupport());
   }
 
-  void _initElevenLabs() {
+  Future<void> _configureTtsDefaults() async {
     try {
-      _elevenLabs = ElevenLabsService.fromEnv();
+      await _tts.setRate(0.45);
+      await _tts.setPitch(1.0);
+      await _tts.setVolume(1.0);
+    } catch (_) {}
+  }
+
+  Future<void> _checkVoiceSupport() async {
+    try {
+      final sttSupported = await _stt.isSupported();
+      final ttsSupported = await _tts.isSupported();
+      if (!mounted) return;
+      if (!sttSupported) {
+        setState(
+          () => _voiceInitError = 'Speech-to-text is not supported on this device.',
+        );
+        return;
+      }
+      if (!ttsSupported) {
+        setState(
+          () => _voiceInitError = 'Text-to-speech is not supported on this device.',
+        );
+      }
     } catch (e) {
-      _elevenLabsInitError = e.toString();
+      if (!mounted) return;
+      setState(() => _voiceInitError = 'Voice features unavailable: $e');
+    }
+  }
+
+  void _initDiseaseApi() {
+    try {
+      _diseaseApi = DiseaseApiService.fromEnv();
+    } catch (e) {
+      _diseaseApiInitError = e.toString();
     }
   }
 
@@ -93,13 +176,20 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
+    if (_isAwaitingAi) return;
     if (_controller.text.trim().isEmpty) return;
 
+    if (_selectedLanguage == null) {
+      await _openLanguagePicker();
+      if (_selectedLanguage == null) return;
+    }
+
     final userEmail = loggedInUser?.email ?? 'Anonymous';
+    final text = _controller.text.trim();
 
     final userMessage = Message(
-      text: _controller.text.trim(),
+      text: text,
       sender: userEmail,
       timestamp: DateTime.now(),
     );
@@ -113,25 +203,90 @@ class _ChatScreenState extends State<ChatScreen> {
       });
 
       _controller.clear();
+      _isAwaitingAi = true;
     });
 
     _scrollToBottom();
 
-    // Mock AI Response
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        setState(() {
-          _messages.add(
-            Message(
-              text: "I'm a demo AI. I received: \"${userMessage.text}\"",
-              sender: 'AI',
-              timestamp: DateTime.now(),
-            ),
-          );
-        });
-        _scrollToBottom();
+    final diseaseApi = _diseaseApi;
+    if (diseaseApi == null) {
+      setState(() => _isAwaitingAi = false);
+      _showSnackBar(
+        _diseaseApiInitError ??
+            'Disease API not configured. Set DISEASE_API_BASE_URL in .env.',
+      );
+      return;
+    }
+
+    // Start session if not started
+    if (diseaseApi.sessionId == null) {
+      try {
+        await diseaseApi.startSession(_selectedLanguage!);
+      } catch (e) {
+        setState(() => _isAwaitingAi = false);
+        _showSnackBar('Failed to start session: $e');
+        return;
       }
+    }
+
+    final placeholderIndex = _messages.length;
+    setState(() {
+      _messages.add(
+        Message(
+          text: (_selectedLanguage ?? 'english') == 'shona'
+              ? 'Ndiri kufunga...'
+              : 'Thinking...',
+          sender: 'AI',
+          timestamp: DateTime.now(),
+        ),
+      );
     });
+    _scrollToBottom();
+
+    try {
+      final reply = await diseaseApi.reply(text);
+      if (!mounted) return;
+
+      String displayReply;
+      String? inferredSpecialist;
+
+      if (reply is DiagnosisResponse) {
+        displayReply = reply.displayString;
+        inferredSpecialist = reply.suggestedSpecialist;
+      } else {
+        displayReply = reply.toString();
+        inferredSpecialist = DoctorRecommendationUtils.inferSearchQuery(displayReply);
+      }
+
+      setState(() {
+        _messages[placeholderIndex] = Message(
+          text: displayReply,
+          sender: 'AI',
+          timestamp: DateTime.now(),
+        );
+        if (widget.recommendDoctor) {
+          _recommendedSearchQuery = inferredSpecialist;
+        }
+        _firestore.collection('messages').add({
+          'text': displayReply,
+          'sender': 'AI',
+          'timestamp': DateTime.now(),
+        });
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _messages[placeholderIndex] = Message(
+          text: 'Sorry — I could not reach the diagnosis server.\n\nError: $e',
+          sender: 'AI',
+          timestamp: DateTime.now(),
+        );
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() => _isAwaitingAi = false);
+      _scrollToBottom();
+    }
   }
 
   void _scrollToBottom() {
@@ -147,114 +302,70 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _toggleRecording() async {
-    if (_elevenLabs == null) {
-      _showSnackBar(
-        'ElevenLabs not configured. Add ELEVENLABS_API_KEY to .env.',
-      );
+    if (_isTranscribing) return;
+    if (_voiceInitError != null) {
+      _showSnackBar(_voiceInitError!);
       return;
     }
-
-    if (_isTranscribing) return;
 
     if (_isRecording) {
-      final path = await _recorder.stop();
-      if (!mounted) return;
-      setState(() => _isRecording = false);
-
-      if (path == null) return;
-      await _transcribeAudioFile(File(path));
-      return;
-    }
-
-    final hasPermission = await _recorder.hasPermission();
-    if (!hasPermission) {
-      _showSnackBar('Microphone permission denied.');
-      return;
-    }
-
-    final dir = await getTemporaryDirectory();
-    final path =
-        '${dir.path}/elevenlabs_stt_${DateTime.now().millisecondsSinceEpoch}.m4a';
-
-    await _recorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.aacLc,
-        sampleRate: 44100,
-        bitRate: 128000,
-        numChannels: 1,
-      ),
-      path: path,
-    );
-
-    if (!mounted) return;
-    setState(() => _isRecording = true);
-  }
-
-  Future<void> _transcribeAudioFile(File audioFile) async {
-    final elevenLabs = _elevenLabs;
-    if (elevenLabs == null) return;
-
-    setState(() => _isTranscribing = true);
-    try {
-      final text = await elevenLabs.speechToText(audioFile);
-      if (!mounted) return;
-      setState(() {
-        _controller.text = text;
-        _controller.selection = TextSelection.fromPosition(
-          TextPosition(offset: _controller.text.length),
-        );
-      });
-    } catch (e) {
-      _showSnackBar('Voice-to-text failed: $e');
-    } finally {
+      setState(() => _isTranscribing = true);
+      _commitRecognitionOnStop = true;
       try {
-        if (await audioFile.exists()) await audioFile.delete();
-      } catch (_) {}
+        await _stt.stop();
+      } catch (e) {
+        _commitRecognitionOnStop = false;
+        if (!mounted) return;
+        setState(() => _isTranscribing = false);
+        _showSnackBar('Failed to stop listening: $e');
+      }
+      return;
+    }
+
+    try {
+      final ok = await _stt.hasPermission();
+      if (!ok) {
+        _showSnackBar('Microphone permission denied.');
+        return;
+      }
+      await _setSttLanguageForSelection();
+      _lastRecognitionText = '';
+      _commitRecognitionOnStop = false;
+      await _stt.start(
+        const SttRecognitionOptions(
+          punctuation: true,
+          offline: true,
+        ),
+      );
       if (!mounted) return;
-      setState(() => _isTranscribing = false);
+      setState(() => _isRecording = true);
+    } catch (e) {
+      _showSnackBar('Voice input failed: $e');
     }
   }
 
   Future<void> _toggleSpeakMessage(int index, String text) async {
-    final elevenLabs = _elevenLabs;
-    if (elevenLabs == null) {
-      _showSnackBar(
-        'ElevenLabs not configured. Add ELEVENLABS_API_KEY to .env.',
-      );
-      return;
-    }
-
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
 
     if (_speakingMessageIndex == index) {
-      await _audioPlayer.stop();
-      final fileToDelete = _currentTtsFile;
-      _currentTtsFile = null;
-      if (fileToDelete != null) {
-        try {
-          if (await fileToDelete.exists()) await fileToDelete.delete();
-        } catch (_) {}
-      }
+      await _tts.stop();
       if (!mounted) return;
       setState(() => _speakingMessageIndex = null);
       return;
     }
 
-    setState(() => _speakingMessageIndex = index);
     try {
-      await _audioPlayer.stop();
-      final previousFile = _currentTtsFile;
-      _currentTtsFile = null;
-      if (previousFile != null) {
-        try {
-          if (await previousFile.exists()) await previousFile.delete();
-        } catch (_) {}
+      if (_speakingMessageIndex != null) {
+        await _tts.stop();
       }
-
-      final ttsFile = await elevenLabs.textToSpeechToFile(trimmed);
-      _currentTtsFile = ttsFile;
-      await _audioPlayer.play(DeviceFileSource(ttsFile.path));
+      if (!mounted) return;
+      setState(() => _speakingMessageIndex = index);
+      await _setTtsLanguageForSelection();
+      await _tts.start(
+        trimmed,
+        options: const TtsOptions(mode: TtsQueueMode.flush),
+      );
     } catch (e) {
       _showSnackBar('Text-to-voice failed: $e');
       if (!mounted) return;
@@ -262,10 +373,224 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _setTtsLanguageForSelection() async {
+    final selected = _selectedLanguage?.toLowerCase().trim();
+    final preferred = selected == 'shona' ? 'sn-ZW' : 'en-US';
+    try {
+      await _tts.setLanguage(preferred);
+    } catch (_) {
+      // Ignore; fallback is handled by the platform TTS engine.
+    }
+  }
+
+  Future<void> _setSttLanguageForSelection() async {
+    final selected = _selectedLanguage?.toLowerCase().trim();
+    final preferred = selected == 'shona' ? 'sn-ZW' : 'en-US';
+    try {
+      await _stt.setLanguage(preferred);
+    } catch (_) {}
+  }
+
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _greetingForLanguage(String language) {
+    return language == 'shona'
+        ? "Mhoroi! Ndini AI yako yekubatsira nezvehutano yeZim Doctors. Ndingakubatsirei nhasi?"
+        : "Hello! I'm your Zim Doctors AI health assistant. How can I help you today?";
+  }
+
+  Future<void> _setLanguage(String language) async {
+    if (_isAwaitingAi) return;
+    final normalized = language.toLowerCase().trim();
+    if (normalized != 'english' && normalized != 'shona') return;
+
+    if (_speakingMessageIndex != null) {
+      await _tts.stop();
+    }
+
+    final prev = _selectedLanguage;
+    setState(() {
+      _selectedLanguage = normalized;
+      _speakingMessageIndex = null;
+      if (_messages.isNotEmpty) {
+        _messages[0] = Message(
+          text: _greetingForLanguage(normalized),
+          sender: 'AI',
+          timestamp: DateTime.now(),
+        );
+      }
+    });
+
+    // Restart backend session on language change so /ask & /predict/text resolve correctly.
+    if (prev != null && prev != normalized) {
+      try {
+        _diseaseApi?.resetSession();
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() {
+        _messages.add(
+          Message(
+            text: normalized == 'shona'
+                ? 'Mutauro wachinjwa kuShona. Bvunza mubvunzo wako.'
+                : 'Language changed to English. Ask your question.',
+            sender: 'AI',
+            timestamp: DateTime.now(),
+          ),
+        );
+      });
+      _scrollToBottom();
+    }
+  }
+
+  Future<void> _openLanguagePicker() async {
+    if (!mounted) return;
+    if (_isAwaitingAi) {
+      _showSnackBar('Please wait for the current reply to finish.');
+      return;
+    }
+
+    final current = _selectedLanguage;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF0F0F0F),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (context) {
+        final themeText = GoogleFonts.inter(color: Colors.white);
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(41),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Language / Mutauro',
+                        style: themeText.copyWith(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _LanguageOptionTile(
+                  label: 'English',
+                  subtitle: 'Standard',
+                  value: 'english',
+                  groupValue: current,
+                  onTap: () => Navigator.pop(context, 'english'),
+                ),
+                const SizedBox(height: 8),
+                _LanguageOptionTile(
+                  label: 'Shona',
+                  subtitle: 'ChiShona',
+                  value: 'shona',
+                  groupValue: current,
+                  onTap: () => Navigator.pop(context, 'shona'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selected != null) {
+      await _setLanguage(selected);
+    }
+  }
+
+  Widget _buildLanguageBanner() {
+    final selected = _selectedLanguage;
+    final title = selected == null
+        ? 'Select language / Sarudza mutauro'
+        : (selected == 'shona' ? 'Mutauro: Shona' : 'Language: English');
+    final helper = selected == null
+        ? 'This will control how the AI replies.'
+        : (selected == 'shona'
+            ? 'AI ichapindura muShona.'
+            : 'AI will reply in English.');
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      color: const Color(0xFF1E1E1E),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(20),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.translate, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  helper,
+                  style: GoogleFonts.inter(
+                    color: Colors.white.withAlpha(179),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: _openLanguagePicker,
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xFF57E659),
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            child: Text(
+              selected == null ? 'Choose' : 'Change',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -296,7 +621,7 @@ class _ChatScreenState extends State<ChatScreen> {
           },
         ),
         title: Text(
-          'AI Assistant',
+          widget.recommendDoctor ? 'Doctor Match' : 'AI Assistant',
           style: GoogleFonts.inter(
             color: Colors.white,
             fontSize: 20,
@@ -304,22 +629,44 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'Change language',
+            onPressed: _openLanguagePicker,
+            icon: const Icon(Icons.translate, color: Colors.white),
+          ),
+        ],
       ),
       body: Column(
         children: [
-          if (_elevenLabsInitError != null)
+          if (_diseaseApiInitError != null)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               color: const Color(0xFF1E1E1E),
               child: Text(
-                'Voice features disabled: $_elevenLabsInitError',
+                'Diagnosis server not configured: $_diseaseApiInitError',
                 style: GoogleFonts.inter(
                   color: Colors.orangeAccent,
                   fontSize: 12,
                 ),
               ),
             ),
+          if (_voiceInitError != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: const Color(0xFF1E1E1E),
+              child: Text(
+                'Voice features unavailable: $_voiceInitError',
+                style: GoogleFonts.inter(
+                  color: Colors.orangeAccent,
+                  fontSize: 12,
+                ),
+                ),
+              ),
+          _buildLanguageBanner(),
+          if (widget.recommendDoctor) _buildRecommendationCta(),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -332,6 +679,61 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           _buildInputArea(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecommendationCta() {
+    final query = _recommendedSearchQuery?.trim();
+    if (query == null || query.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withAlpha(20)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.local_hospital, color: Color(0xFF57E659), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Suggested: $query',
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 10),
+          TextButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DoctorsScreen(
+                    initialQuery: query,
+                    autofocusSearch: true,
+                  ),
+                ),
+              );
+            },
+            child: Text(
+              'Search',
+              style: GoogleFonts.inter(
+                color: const Color(0xFF57E659),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -432,7 +834,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 controller: _controller,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  hintText: 'Type a message...',
+                  hintText: (_selectedLanguage ?? 'english') == 'shona'
+                      ? 'Nyora meseji...'
+                      : 'Type a message...',
                   hintStyle: TextStyle(color: Colors.grey[600]),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(
@@ -473,7 +877,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(width: 12),
           GestureDetector(
-            onTap: _sendMessage,
+            onTap: _isAwaitingAi ? null : () => _sendMessage(),
             child: Container(
               width: 50,
               height: 50,
@@ -481,7 +885,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 color: Color(0xFF57E659),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.send, color: Colors.black, size: 24),
+              child: Center(
+                child: _isAwaitingAi
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send, color: Colors.black, size: 24),
+              ),
             ),
           ),
         ],
@@ -491,13 +903,107 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    final sub = _playerCompleteSub;
-    _playerCompleteSub = null;
-    if (sub != null) unawaited(sub.cancel());
-    unawaited(_audioPlayer.dispose());
-    unawaited(_recorder.dispose());
+    unawaited(_tts.stop());
+    _sttResultSub?.cancel();
+    _sttStateSub?.cancel();
+    _ttsStateSub?.cancel();
+    unawaited(_stt.dispose());
+    unawaited(_tts.dispose());
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+}
+
+class _LanguageOptionTile extends StatelessWidget {
+  const _LanguageOptionTile({
+    required this.label,
+    required this.subtitle,
+    required this.value,
+    required this.groupValue,
+    required this.onTap,
+  });
+
+  final String label;
+  final String subtitle;
+  final String value;
+  final String? groupValue;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = groupValue == value;
+    return Material(
+      color: const Color(0xFF1A1A1A),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? const Color(0xFF57E659)
+                      : Colors.white.withAlpha(20),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  selected ? Icons.check : Icons.language,
+                  color: selected ? Colors.black : Colors.white,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.inter(
+                        color: Colors.white.withAlpha(179),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: selected ? const Color(0xFF57E659) : Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: selected
+                        ? const Color(0xFF57E659)
+                        : Colors.white.withAlpha(90),
+                    width: 2,
+                  ),
+                ),
+                child: selected
+                    ? const Icon(Icons.check, size: 14, color: Colors.black)
+                    : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

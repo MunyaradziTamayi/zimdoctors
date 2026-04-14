@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:zimdoctors/utils/date_utils.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:zimdoctors/utils/whatsapp_utils.dart';
 
 class DoctorDetailScreen extends StatelessWidget {
   static const String id = '/doctor_detail_screen';
@@ -17,18 +18,252 @@ class DoctorDetailScreen extends StatelessWidget {
 
   const DoctorDetailScreen({super.key, required this.doctor});
 
-  Future<bool> _hasConfirmedBooking() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return false;
+  String _buildWhatsAppBookingMessage(Booking booking) {
+    final lines = <String>[
+      'New appointment booking',
+      '',
+      'Patient: ${booking.patientName}',
+      'Description: ${booking.reason}',
+      'Scheduled: ${booking.date} at ${booking.time}',
+      'Payment: ${booking.paymentStatus.toUpperCase()}',
+      'Amount: \$${booking.amount.toStringAsFixed(2)}',
+    ];
+    return lines.join('\n');
+  }
 
-    final snapshot = await FirebaseFirestore.instance
+  Future<void> _promptWhatsAppNotifyDoctor(
+    BuildContext context, {
+    required Booking booking,
+  }) async {
+    final normalized = WhatsAppUtils.normalizeWaMeNumber(doctor.phoneNumber);
+    if (normalized.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Doctor phone number is missing; cannot open WhatsApp.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final message = _buildWhatsAppBookingMessage(booking);
+    final waMeUri = Uri(
+      scheme: 'https',
+      host: 'wa.me',
+      path: '/$normalized',
+      queryParameters: {'text': message},
+    );
+
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          'Notify doctor on WhatsApp?',
+          style: GoogleFonts.inter(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Text(
+            message,
+            style: GoogleFonts.inter(color: Colors.grey[300], height: 1.35),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(
+              'Not now',
+              style: GoogleFonts.inter(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              try {
+                final ok = await launchUrl(
+                  waMeUri,
+                  mode: LaunchMode.externalApplication,
+                );
+                if (!ok && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Could not open WhatsApp.'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Could not open WhatsApp: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF57E659),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Open WhatsApp',
+              style: GoogleFonts.inter(
+                color: Colors.black,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Stream<List<Booking>> _patientBookingsStream(String patientId) {
+    return FirebaseFirestore.instance
         .collection('bookings')
         .where('doctorId', isEqualTo: doctor.id)
-        .where('patientId', isEqualTo: user.uid)
-        .where('status', isEqualTo: 'confirmed')
-        .limit(1)
-        .get();
-    return snapshot.docs.isNotEmpty;
+        .where('patientId', isEqualTo: patientId)
+        .snapshots()
+        .map((snapshot) {
+      final bookings = snapshot.docs
+          .map((doc) => Booking.fromMap(doc.data(), doc.id))
+          .toList();
+      bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return bookings;
+    });
+  }
+
+  _CommunicationGate _computeCommunicationGate(
+    List<Booking> bookings, {
+    required DateTime now,
+  }) {
+    final windows = <Booking, AppointmentWindow>{};
+    for (final b in bookings) {
+      final w = DateUtilsX.tryParseAppointmentWindow(b.date, b.time);
+      if (w != null) windows[b] = w;
+    }
+
+    final paidNotCancelled = bookings.where((b) {
+      if (b.paymentStatus != 'paid') return false;
+      return b.status != 'cancelled';
+    }).toList();
+
+    final activeConfirmed = windows.entries
+        .where(
+          (e) =>
+              e.key.paymentStatus == 'paid' &&
+              e.key.status == 'confirmed' &&
+              (now.isAtSameMomentAs(e.value.start) ||
+                  now.isAfter(e.value.start)) &&
+              now.isBefore(e.value.end),
+        )
+        .toList()
+      ..sort((a, b) => b.value.start.compareTo(a.value.start));
+
+    if (activeConfirmed.isNotEmpty) {
+      final active = activeConfirmed.first;
+      return _CommunicationGate(
+        canCommunicate: true,
+        message:
+            'Communication is unlocked until ${DateFormat('HH:mm').format(active.value.end)}.',
+        activeBooking: active.key,
+        reschedulableBooking: null,
+      );
+    }
+
+    final upcomingConfirmed = windows.entries
+        .where(
+          (e) =>
+              e.key.paymentStatus == 'paid' &&
+              e.key.status == 'confirmed' &&
+              now.isBefore(e.value.start),
+        )
+        .toList()
+      ..sort((a, b) => a.value.start.compareTo(b.value.start));
+
+    final upcomingPaid = windows.entries
+        .where(
+          (e) =>
+              e.key.paymentStatus == 'paid' &&
+              (e.key.status == 'pending' || e.key.status == 'confirmed') &&
+              now.isBefore(e.value.start),
+        )
+        .toList()
+      ..sort((a, b) => a.value.start.compareTo(b.value.start));
+
+    final reschedulableBooking =
+        upcomingPaid.isNotEmpty ? upcomingPaid.first.key : null;
+
+    if (paidNotCancelled.isEmpty) {
+      return _CommunicationGate(
+        canCommunicate: false,
+        message: 'Communication unlocks only after you book and pay.',
+        activeBooking: null,
+        reschedulableBooking: null,
+      );
+    }
+
+    if (upcomingConfirmed.isNotEmpty) {
+      final next = upcomingConfirmed.first;
+      final when = DateFormat('EEE, dd MMM yyyy HH:mm').format(next.value.start);
+      return _CommunicationGate(
+        canCommunicate: false,
+        message: 'Communication opens at $when and locks when the slot ends.',
+        activeBooking: null,
+        reschedulableBooking: reschedulableBooking,
+      );
+    }
+
+    final hasPendingPaid = paidNotCancelled.any(
+      (b) => b.status != 'confirmed' && b.status != 'cancelled',
+    );
+    if (hasPendingPaid) {
+      return _CommunicationGate(
+        canCommunicate: false,
+        message:
+            'Waiting for the doctor to confirm your paid appointment before communication opens.',
+        activeBooking: null,
+        reschedulableBooking: reschedulableBooking,
+      );
+    }
+
+    final endedConfirmed = windows.entries
+        .where(
+          (e) =>
+              e.key.paymentStatus == 'paid' &&
+              e.key.status == 'confirmed' &&
+              !now.isBefore(e.value.end),
+        )
+        .toList()
+      ..sort((a, b) => b.value.end.compareTo(a.value.end));
+
+    if (endedConfirmed.isNotEmpty) {
+      return _CommunicationGate(
+        canCommunicate: false,
+        message:
+            'Your paid appointment time has ended; communication is locked again.',
+        activeBooking: null,
+        reschedulableBooking: null,
+      );
+    }
+
+    return _CommunicationGate(
+      canCommunicate: false,
+      message: 'Communication is currently locked.',
+      activeBooking: null,
+      reschedulableBooking: reschedulableBooking,
+    );
   }
 
   @override
@@ -278,135 +513,226 @@ class DoctorDetailScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  FutureBuilder<bool>(
-                    future: _hasConfirmedBooking(),
-                    builder: (context, snapshot) {
-                      final canCommunicate = snapshot.data == true;
-                      final gateMessage =
-                          'Communication is unlocked after the doctor confirms your appointment.';
-
-                      Future<void> guardAndRun(Future<void> Function() action) async {
-                        final user = FirebaseAuth.instance.currentUser;
-                        if (user == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Please login first.'),
+                  Builder(
+                    builder: (context) {
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user == null) {
+                        const gateMessage = 'Please login to communicate.';
+                        return Column(
+                          children: [
+                            _buildCommunicationItem(
+                              icon: Icons.chat_bubble_outline,
+                              title: 'Messaging',
+                              subtitle: gateMessage,
+                              color: const Color(0xFF422121),
+                              iconColor: Colors.pinkAccent,
+                              onTap: () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text(gateMessage)),
+                                );
+                              },
                             ),
-                          );
-                          return;
-                        }
-                        final allowed = await _hasConfirmedBooking();
-                        if (!allowed) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(gateMessage)),
-                          );
-                          return;
-                        }
-                        try {
-                          await action();
-                        } catch (e) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error: $e')),
-                          );
-                        }
+                            const SizedBox(height: 12),
+                            _buildCommunicationItem(
+                              icon: FontAwesomeIcons.whatsapp,
+                              title: 'WhatsApp',
+                              subtitle: gateMessage,
+                              color: const Color(0xFF1E2F2F),
+                              iconColor: Colors.green,
+                              onTap: () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text(gateMessage)),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _buildCommunicationItem(
+                              icon: Icons.call_outlined,
+                              title: 'Call Doctor',
+                              subtitle: gateMessage,
+                              color: const Color(0xFF1E2832),
+                              iconColor: Colors.blueAccent,
+                              onTap: () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text(gateMessage)),
+                                );
+                              },
+                            ),
+                          ],
+                        );
                       }
 
-                      return Column(
-                        children: [
-                          _buildCommunicationItem(
-                            icon: Icons.chat_bubble_outline,
-                            title: 'Messaging',
-                            subtitle: canCommunicate
-                                ? 'Send SMS to the doctor'
-                                : gateMessage,
-                            color: const Color(0xFF422121),
-                            iconColor: Colors.pink[200]!,
-                            onTap: () {
-                              guardAndRun(() async {
-                                final Uri smsUri = Uri(
-                                  scheme: 'sms',
-                                  path: doctor.phoneNumber,
-                                  queryParameters: <String, String>{
-                                    'body': 'Hello Dr. ${doctor.name}, ',
-                                  },
+                      return StreamBuilder<List<Booking>>(
+                        stream: _patientBookingsStream(user.uid),
+                        builder: (context, snapshot) {
+                          final bookings = snapshot.data ?? const <Booking>[];
+                          return StreamBuilder<int>(
+                            stream: Stream<int>.periodic(
+                              const Duration(seconds: 30),
+                              (i) => i,
+                            ),
+                            initialData: 0,
+                            builder: (context, _) {
+                              final gate = _computeCommunicationGate(
+                                bookings,
+                                now: DateTime.now(),
+                              );
+
+                              Future<void> guardAndRun(
+                                Future<void> Function() action,
+                              ) async {
+                                final gateNow = _computeCommunicationGate(
+                                  bookings,
+                                  now: DateTime.now(),
                                 );
-                                if (await canLaunchUrl(smsUri)) {
-                                  await launchUrl(
-                                    smsUri,
-                                    mode: LaunchMode.externalApplication,
+                                if (!context.mounted) return;
+                                if (!gateNow.canCommunicate) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(gateNow.message)),
                                   );
-                                } else {
-                                  throw 'Could not launch SMS app';
+                                  return;
                                 }
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          _buildCommunicationItem(
-                            icon: FontAwesomeIcons.whatsapp,
-                            title: 'WhatsApp',
-                            subtitle: canCommunicate
-                                ? 'WhatsApp your doctor directly.'
-                                : gateMessage,
-                            color: const Color(0xFF1E2F2F),
-                            iconColor: Colors.green[400]!,
-                            onTap: () {
-                              guardAndRun(() async {
-                                String phoneNumber =
-                                    doctor.phoneNumber.replaceAll(
-                                  RegExp(r'[^\d+]'),
-                                  '',
-                                );
-                                if (!phoneNumber.startsWith('+')) {
-                                  if (phoneNumber.startsWith('0')) {
-                                    phoneNumber =
-                                        '+263${phoneNumber.substring(1)}';
-                                  } else {
-                                    phoneNumber = '+263$phoneNumber';
-                                  }
-                                }
-                                final Uri whatsappUri = Uri.parse(
-                                  'https://wa.me/${phoneNumber.replaceAll('+', '')}',
-                                );
-                                if (await canLaunchUrl(whatsappUri)) {
-                                  await launchUrl(
-                                    whatsappUri,
-                                    mode: LaunchMode.externalApplication,
+                                try {
+                                  await action();
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Error: $e')),
                                   );
-                                } else {
-                                  throw 'Could not launch WhatsApp';
                                 }
-                              });
+                              }
+
+                              return Column(
+                                children: [
+                                  _buildCommunicationItem(
+                                    icon: Icons.chat_bubble_outline,
+                                    title: 'Messaging',
+                                    subtitle: gate.canCommunicate
+                                        ? 'Send SMS to the doctor'
+                                        : gate.message,
+                                    color: const Color(0xFF422121),
+                                    iconColor: Colors.pink[200]!,
+                                    onTap: () {
+                                      guardAndRun(() async {
+                                        final Uri smsUri = Uri(
+                                          scheme: 'sms',
+                                          path: doctor.phoneNumber,
+                                          queryParameters: <String, String>{
+                                            'body': 'Hello Dr. ${doctor.name}, ',
+                                          },
+                                        );
+                                        if (await canLaunchUrl(smsUri)) {
+                                          await launchUrl(
+                                            smsUri,
+                                            mode: LaunchMode.externalApplication,
+                                          );
+                                        } else {
+                                          throw 'Could not launch SMS app';
+                                        }
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildCommunicationItem(
+                                    icon: FontAwesomeIcons.whatsapp,
+                                    title: 'WhatsApp',
+                                    subtitle: gate.canCommunicate
+                                        ? 'WhatsApp your doctor directly.'
+                                        : gate.message,
+                                    color: const Color(0xFF1E2F2F),
+                                    iconColor: Colors.green[400]!,
+                                    onTap: () {
+                                      guardAndRun(() async {
+                                        String phoneNumber =
+                                            doctor.phoneNumber.replaceAll(
+                                          RegExp(r'[^\d+]'),
+                                          '',
+                                        );
+                                        if (!phoneNumber.startsWith('+')) {
+                                          if (phoneNumber.startsWith('0')) {
+                                            phoneNumber =
+                                                '+263${phoneNumber.substring(1)}';
+                                          } else {
+                                            phoneNumber = '+263$phoneNumber';
+                                          }
+                                        }
+                                        final Uri whatsappUri = Uri.parse(
+                                          'https://wa.me/${phoneNumber.replaceAll('+', '')}',
+                                        );
+                                        if (await canLaunchUrl(whatsappUri)) {
+                                          await launchUrl(
+                                            whatsappUri,
+                                            mode: LaunchMode.externalApplication,
+                                          );
+                                        } else {
+                                          throw 'Could not launch WhatsApp';
+                                        }
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildCommunicationItem(
+                                    icon: Icons.call_outlined,
+                                    title: 'Call Doctor',
+                                    subtitle: gate.canCommunicate
+                                        ? 'Call your doctor directly.'
+                                        : gate.message,
+                                    color: const Color(0xFF1E2832),
+                                    iconColor: Colors.blue[300]!,
+                                    onTap: () {
+                                      guardAndRun(() async {
+                                        final Uri telUri = Uri(
+                                          scheme: 'tel',
+                                          path: doctor.phoneNumber,
+                                        );
+                                        if (await canLaunchUrl(telUri)) {
+                                          await launchUrl(
+                                            telUri,
+                                            mode: LaunchMode.externalApplication,
+                                          );
+                                        } else {
+                                          throw 'Could not launch dialer';
+                                        }
+                                      });
+                                    },
+                                  ),
+                                  if (gate.reschedulableBooking != null) ...[
+                                    const SizedBox(height: 18),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 52,
+                                      child: OutlinedButton.icon(
+                                        onPressed: () => _showRescheduleDialog(
+                                          context,
+                                          booking: gate.reschedulableBooking!,
+                                        ),
+                                        style: OutlinedButton.styleFrom(
+                                          side: const BorderSide(
+                                            color: Color(0xFF57E659),
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(16),
+                                          ),
+                                        ),
+                                        icon: const Icon(
+                                          Icons.schedule,
+                                          color: Color(0xFF57E659),
+                                        ),
+                                        label: Text(
+                                          'Reschedule Appointment',
+                                          style: GoogleFonts.inter(
+                                            fontWeight: FontWeight.w800,
+                                            color: const Color(0xFF57E659),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              );
                             },
-                          ),
-                          const SizedBox(height: 12),
-                          _buildCommunicationItem(
-                            icon: Icons.call_outlined,
-                            title: 'Call Doctor',
-                            subtitle: canCommunicate
-                                ? 'Call your doctor directly.'
-                                : gateMessage,
-                            color: const Color(0xFF1E2832),
-                            iconColor: Colors.blue[300]!,
-                            onTap: () {
-                              guardAndRun(() async {
-                                final Uri telUri = Uri(
-                                  scheme: 'tel',
-                                  path: doctor.phoneNumber,
-                                );
-                                if (await canLaunchUrl(telUri)) {
-                                  await launchUrl(
-                                    telUri,
-                                    mode: LaunchMode.externalApplication,
-                                  );
-                                } else {
-                                  throw 'Could not launch dialer';
-                                }
-                              });
-                            },
-                          ),
-                        ],
+                          );
+                        },
                       );
                     },
                   ),
@@ -645,6 +971,7 @@ class DoctorDetailScreen extends StatelessWidget {
                     backgroundColor: Colors.orange,
                   ),
                 );
+                await _promptWhatsAppNotifyDoctor(context, booking: booking);
               }
             } catch (e) {
               if (context.mounted) {
@@ -678,6 +1005,229 @@ class DoctorDetailScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _showRescheduleDialog(
+    BuildContext context, {
+    required Booking booking,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please login first.')),
+      );
+      return;
+    }
+
+    final currentWindow =
+        DateUtilsX.tryParseAppointmentWindow(booking.date, booking.time);
+    if (currentWindow != null && !DateTime.now().isBefore(currentWindow.start)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You can only reschedule before the appointment starts.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final upcomingDates = DateUtilsX.upcomingIsoDates(doctor.availableDates);
+    if (upcomingDates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No upcoming dates available for this doctor.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    String? selectedDate;
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: Text(
+            'Reschedule: Select Date',
+            style: GoogleFonts.inter(color: Colors.white),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: upcomingDates.length,
+              itemBuilder: (context, index) {
+                final date = upcomingDates[index];
+                final isCurrent = date == booking.date;
+                return ListTile(
+                  title: Text(
+                    DateFormat('EEEE, dd MMM yyyy').format(DateTime.parse(date)),
+                    style: TextStyle(
+                      color: isCurrent ? const Color(0xFF57E659) : Colors.white,
+                      fontSize: 14,
+                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: isCurrent
+                      ? Text(
+                          'Current date',
+                          style: GoogleFonts.inter(color: Colors.grey[400]),
+                        )
+                      : null,
+                  onTap: () {
+                    selectedDate = date;
+                    Navigator.pop(context);
+                  },
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selectedDate == null) return;
+    if (DateUtilsX.isPastDate(selectedDate!)) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('That date has already passed. Pick another date.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final availableSlots = doctor.availabilitySlots[selectedDate] ?? [];
+    if (availableSlots.isEmpty) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No time slots available for this date.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    String? selectedSlot;
+    final doctorService = DoctorService();
+
+    if (context.mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            title: Text(
+              'Reschedule: Select Time Slot',
+              style: GoogleFonts.inter(color: Colors.white),
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: FutureBuilder<List<String>>(
+                future: Future.wait(
+                  availableSlots.map((slot) async {
+                    final isCurrent =
+                        selectedDate == booking.date && slot == booking.time;
+                    if (isCurrent) return slot;
+                    final isBooked = await doctorService.isSlotBooked(
+                      doctor.id,
+                      selectedDate!,
+                      slot,
+                    );
+                    return isBooked ? '' : slot;
+                  }),
+                ).then((results) => results.where((s) => s.isNotEmpty).toList()),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: Color(0xFF57E659)),
+                    );
+                  }
+                  final freeSlots = snapshot.data ?? [];
+                  if (freeSlots.isEmpty) {
+                    return const Text(
+                      'All slots are fully booked for this date.',
+                      style: TextStyle(color: Colors.grey),
+                    );
+                  }
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: freeSlots.length,
+                    itemBuilder: (context, index) {
+                      final slot = freeSlots[index];
+                      final isCurrent =
+                          selectedDate == booking.date && slot == booking.time;
+                      return ListTile(
+                        title: Text(
+                          slot,
+                          style: TextStyle(
+                            color: isCurrent
+                                ? const Color(0xFF57E659)
+                                : Colors.white,
+                            fontWeight:
+                                isCurrent ? FontWeight.w800 : FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: isCurrent
+                            ? Text(
+                                'Current time',
+                                style: GoogleFonts.inter(color: Colors.grey[400]),
+                              )
+                            : null,
+                        onTap: () {
+                          selectedSlot = slot;
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    if (selectedSlot == null) return;
+    if (selectedDate == booking.date && selectedSlot == booking.time) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No changes selected.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      await doctorService.rescheduleBookingAtomic(
+        bookingId: booking.id,
+        newDate: selectedDate!,
+        newTime: selectedSlot!,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Reschedule requested. Awaiting doctor confirmation for the new slot.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to reschedule: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Future<Map<String, dynamic>?> _showPaymentModal(
     BuildContext context,
     double amount,
@@ -708,192 +1258,205 @@ class DoctorDetailScreen extends StatelessWidget {
                   topRight: Radius.circular(32),
                 ),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[800],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Payment Details',
-                    style: GoogleFonts.inter(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Total Amount: \$${amount.toStringAsFixed(2)}',
-                    style: GoogleFonts.inter(
-                      fontSize: 18,
-                      color: const Color(0xFF57E659),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
-                    'Select Mobile Money Provider',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: Colors.grey[400],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildProviderOption(
-                        'Ecocash',
-                        'PZW201',
-                        selectedProvider,
-                        (val) => setModalState(() => selectedProvider = val),
-                      ),
-                      const SizedBox(width: 12),
-                      _buildProviderOption(
-                        'OneMoney',
-                        'PZW202',
-                        selectedProvider,
-                        (val) => setModalState(() => selectedProvider = val),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Phone Number',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: Colors.grey[400],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: phoneController,
-                    style: const TextStyle(color: Colors.white),
-                    keyboardType: TextInputType.phone,
-                    decoration: InputDecoration(
-                      hintText: 'e.g. 0771234567',
-                      hintStyle: TextStyle(color: Colors.grey[600]),
-                      filled: true,
-                      fillColor: const Color(0xFF2C2C2C),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: isPaying
-                          ? null
-                          : () async {
-                              setModalState(() => isPaying = true);
-                              try {
-                                final paymentService = PaymentService();
-                                final String txRef =
-                                    'TXN_${DateTime.now().millisecondsSinceEpoch}';
-
-                                final response = await paymentService
-                                    .initiateMobileMoneyPayment(
-                                      amount: amount,
-                                      currencyCode: 'USD',
-                                      transactionDescription:
-                                          'Doctor Consultation Fee',
-                                      transactionReference: txRef,
-                                      customerName:
-                                          user.displayName ??
-                                          user.email?.split('@').first ??
-                                          'Patient',
-                                      customerEmail: user.email ?? '',
-                                      customerPhone: phoneController.text,
-                                      paymentMethodCode: selectedProvider,
-                                    );
-
-                                if (response.referenceNumber.isNotEmpty) {
-                                  // In real scenario, we might poll for status here or wait for push notification
-                                  if (context.mounted) {
-                                    Navigator.pop(context, {
-                                      'success': true,
-                                      'reference': response.referenceNumber,
-                                    });
-                                  }
-                                } else {
-                                  setModalState(() => isPaying = false);
-                                  if (context.mounted) {
-                                    _showErrorDialog(
-                                      context,
-                                      'Payment initialization failed. Please try again or contact support.',
-                                    );
-                                  }
-                                }
-                              } catch (e) {
-                                setModalState(() => isPaying = false);
-                                if (context.mounted) {
-                                  _showErrorDialog(
-                                    context,
-                                    'A payment error occurred: ${e.toString().replaceAll('Exception: ', '')}',
-                                  );
-                                }
-                              }
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF57E659),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[800],
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
                       ),
-                      child: isPaying
-                          ? const CircularProgressIndicator(color: Colors.black)
-                          : Text(
-                              'Pay Now',
-                              style: GoogleFonts.inter(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black,
-                              ),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: TextButton(
-                      onPressed: () {
-                        Navigator.pop(context, {
-                          'success': true,
-                          'reference': 'TEST_REF_${DateTime.now().millisecondsSinceEpoch}',
-                        });
-                      },
-                      style: TextButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(color: Colors.grey[800]!),
-                        ),
-                      ),
-                      child: Text(
-                        'Skip Payment (Testing Only)',
+                      const SizedBox(height: 24),
+                      Text(
+                        'Payment Details',
                         style: GoogleFonts.inter(
-                          color: Colors.grey[400],
-                          fontSize: 15,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Total Amount: \$${amount.toStringAsFixed(2)}',
+                        style: GoogleFonts.inter(
+                          fontSize: 18,
+                          color: const Color(0xFF57E659),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 32),
+                      Text(
+                        'Select Mobile Money Provider',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: Colors.grey[400],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _buildProviderOption(
+                            'Ecocash',
+                            'PZW201',
+                            selectedProvider,
+                            (val) => setModalState(
+                              () => selectedProvider = val,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          _buildProviderOption(
+                            'OneMoney',
+                            'PZW202',
+                            selectedProvider,
+                            (val) => setModalState(
+                              () => selectedProvider = val,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Phone Number',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: Colors.grey[400],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: phoneController,
+                        style: const TextStyle(color: Colors.white),
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          hintText: 'e.g. 0771234567',
+                          hintStyle: TextStyle(color: Colors.grey[600]),
+                          filled: true,
+                          fillColor: const Color(0xFF2C2C2C),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: isPaying
+                              ? null
+                              : () async {
+                                  setModalState(() => isPaying = true);
+                                  try {
+                                    final paymentService = PaymentService();
+                                    final String txRef =
+                                        'TXN_${DateTime.now().millisecondsSinceEpoch}';
+
+                                    final response = await paymentService
+                                        .initiateMobileMoneyPayment(
+                                          amount: amount,
+                                          currencyCode: 'USD',
+                                          transactionDescription:
+                                              'Doctor Consultation Fee',
+                                          transactionReference: txRef,
+                                          customerName:
+                                              user.displayName ??
+                                              user.email?.split('@').first ??
+                                              'Patient',
+                                          customerEmail: user.email ?? '',
+                                          customerPhone: phoneController.text,
+                                          paymentMethodCode: selectedProvider,
+                                        );
+
+                                    if (response.referenceNumber.isNotEmpty) {
+                                      // In real scenario, we might poll for status here or wait for push notification
+                                      if (context.mounted) {
+                                        Navigator.pop(context, {
+                                          'success': true,
+                                          'reference': response.referenceNumber,
+                                        });
+                                      }
+                                    } else {
+                                      setModalState(() => isPaying = false);
+                                      if (context.mounted) {
+                                        _showErrorDialog(
+                                          context,
+                                          'Payment initialization failed. Please try again or contact support.',
+                                        );
+                                      }
+                                    }
+                                  } catch (e) {
+                                    setModalState(() => isPaying = false);
+                                    if (context.mounted) {
+                                      _showErrorDialog(
+                                        context,
+                                        'A payment error occurred: ${e.toString().replaceAll('Exception: ', '')}',
+                                      );
+                                    }
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF57E659),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: isPaying
+                              ? const CircularProgressIndicator(
+                                  color: Colors.black,
+                                )
+                              : Text(
+                                  'Pay Now',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.pop(context, {
+                              'success': true,
+                              'reference':
+                                  'TEST_REF_${DateTime.now().millisecondsSinceEpoch}',
+                            });
+                          },
+                          style: TextButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(color: Colors.grey[800]!),
+                            ),
+                          ),
+                          child: Text(
+                            'Skip Payment (Testing Only)',
+                            style: GoogleFonts.inter(
+                              color: Colors.grey[400],
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                    ],
                   ),
-                  const SizedBox(height: 40),
-                ],
+                ),
               ),
             );
           },
@@ -1095,6 +1658,20 @@ class DoctorDetailScreen extends StatelessWidget {
       },
     );
   }
+}
+
+class _CommunicationGate {
+  final bool canCommunicate;
+  final String message;
+  final Booking? activeBooking;
+  final Booking? reschedulableBooking;
+
+  const _CommunicationGate({
+    required this.canCommunicate,
+    required this.message,
+    required this.activeBooking,
+    required this.reschedulableBooking,
+  });
 }
 
 class _BookingReasonDialog extends StatefulWidget {
