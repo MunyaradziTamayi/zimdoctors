@@ -63,5 +63,85 @@ class DoctorRecommendationUtils {
 
     return 'General Practitioner';
   }
-}
 
+  static String extractSpecialist(String aiText) {
+    final normalized = aiText.trim();
+    final labelMatch = RegExp(
+      r'(?:specialist|doctor type|doctor|recommend(?:ed) specialist)\s*[:\-]\s*(.+)',
+      caseSensitive: false,
+    ).firstMatch(normalized);
+    if (labelMatch != null && labelMatch.groupCount >= 1) {
+      return _normalizeSpecialty(labelMatch.group(1)!);
+    }
+
+    final lines = normalized
+        .split(RegExp(r'[\r\n]+'))
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    if (lines.isNotEmpty) {
+      final firstLine = lines.first;
+      if (!firstLine.toLowerCase().contains('urgency')) {
+        return _normalizeSpecialty(firstLine);
+      }
+    }
+
+    return inferSearchQuery(aiText);
+  }
+
+  static String extractUrgency(String aiText) {
+    final normalized = aiText.trim();
+    final labelMatch = RegExp(
+      r'urgency\s*[:\-]\s*(.+)',
+      caseSensitive: false,
+    ).firstMatch(normalized);
+    if (labelMatch != null && labelMatch.groupCount >= 1) {
+      return _normalizeUrgency(labelMatch.group(1)!);
+    }
+
+    final lower = normalized.toLowerCase();
+    if ([
+      'emergency',
+      'critical',
+      'life-threatening',
+      'urgent',
+      'immediately',
+      'severe',
+      'sudden',
+      'acute',
+    ].any(lower.contains)) {
+      return 'High';
+    }
+    if ([
+      'moderate',
+      'soon',
+      'within days',
+      'careful',
+      'watch',
+      'should see',
+    ].any(lower.contains)) {
+      return 'Medium';
+    }
+    return 'Low';
+  }
+
+  static String _normalizeSpecialty(String value) {
+    return value.split(RegExp(r'[\r\n]')).first.trim();
+  }
+
+  static String _normalizeUrgency(String value) {
+    final lower = value.trim().toLowerCase();
+    if (lower.contains('high') ||
+        lower.contains('urgent') ||
+        lower.contains('emergency') ||
+        lower.contains('critical')) {
+      return 'High';
+    }
+    if (lower.contains('medium') ||
+        lower.contains('moderate') ||
+        lower.contains('soon')) {
+      return 'Medium';
+    }
+    return 'Low';
+  }
+}

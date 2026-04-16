@@ -148,12 +148,52 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 40),
-                // Header
+                Row(
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF57E659),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.favorite,
+                        color: Colors.black,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Zim Doctors',
+                          style: GoogleFonts.inter(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Healthcare at your fingertips',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 30),
                 Text(
                   'Welcome Back',
                   style: GoogleFonts.inter(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w700,
                     color: Colors.white,
                   ),
                 ),
@@ -166,7 +206,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: Colors.grey[400],
                   ),
                 ),
-                const SizedBox(height: 48),
+                const SizedBox(height: 40),
 
                 // Role Toggle
                 Container(
@@ -352,7 +392,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: isLoading
                         ? const CircularProgressIndicator(color: Colors.black)
                         : Text(
-                            'Login',
+                            'Sign In',
                             style: GoogleFonts.inter(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
@@ -396,13 +436,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             const Icon(
-                              FontAwesomeIcons.apple,
+                              FontAwesomeIcons.google,
                               color: Colors.white,
-                              size: 22,
+                              size: 20,
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              'Apple',
+                              'Google',
                               style: GoogleFonts.inter(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w600,
@@ -425,13 +465,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             const Icon(
-                              FontAwesomeIcons.google,
+                              FontAwesomeIcons.facebookF,
                               color: Colors.white,
                               size: 20,
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              'Google',
+                              'Facebook',
                               style: GoogleFonts.inter(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w600,

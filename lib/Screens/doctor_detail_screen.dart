@@ -39,7 +39,9 @@ class DoctorDetailScreen extends StatelessWidget {
     if (normalized.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Doctor phone number is missing; cannot open WhatsApp.'),
+          content: Text(
+            'Doctor phone number is missing; cannot open WhatsApp.',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -136,12 +138,12 @@ class DoctorDetailScreen extends StatelessWidget {
         .where('patientId', isEqualTo: patientId)
         .snapshots()
         .map((snapshot) {
-      final bookings = snapshot.docs
-          .map((doc) => Booking.fromMap(doc.data(), doc.id))
-          .toList();
-      bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return bookings;
-    });
+          final bookings = snapshot.docs
+              .map((doc) => Booking.fromMap(doc.data(), doc.id))
+              .toList();
+          bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return bookings;
+        });
   }
 
   _CommunicationGate _computeCommunicationGate(
@@ -159,17 +161,18 @@ class DoctorDetailScreen extends StatelessWidget {
       return b.status != 'cancelled';
     }).toList();
 
-    final activeConfirmed = windows.entries
-        .where(
-          (e) =>
-              e.key.paymentStatus == 'paid' &&
-              e.key.status == 'confirmed' &&
-              (now.isAtSameMomentAs(e.value.start) ||
-                  now.isAfter(e.value.start)) &&
-              now.isBefore(e.value.end),
-        )
-        .toList()
-      ..sort((a, b) => b.value.start.compareTo(a.value.start));
+    final activeConfirmed =
+        windows.entries
+            .where(
+              (e) =>
+                  e.key.paymentStatus == 'paid' &&
+                  e.key.status == 'confirmed' &&
+                  (now.isAtSameMomentAs(e.value.start) ||
+                      now.isAfter(e.value.start)) &&
+                  now.isBefore(e.value.end),
+            )
+            .toList()
+          ..sort((a, b) => b.value.start.compareTo(a.value.start));
 
     if (activeConfirmed.isNotEmpty) {
       final active = activeConfirmed.first;
@@ -182,28 +185,31 @@ class DoctorDetailScreen extends StatelessWidget {
       );
     }
 
-    final upcomingConfirmed = windows.entries
-        .where(
-          (e) =>
-              e.key.paymentStatus == 'paid' &&
-              e.key.status == 'confirmed' &&
-              now.isBefore(e.value.start),
-        )
-        .toList()
-      ..sort((a, b) => a.value.start.compareTo(b.value.start));
+    final upcomingConfirmed =
+        windows.entries
+            .where(
+              (e) =>
+                  e.key.paymentStatus == 'paid' &&
+                  e.key.status == 'confirmed' &&
+                  now.isBefore(e.value.start),
+            )
+            .toList()
+          ..sort((a, b) => a.value.start.compareTo(b.value.start));
 
-    final upcomingPaid = windows.entries
-        .where(
-          (e) =>
-              e.key.paymentStatus == 'paid' &&
-              (e.key.status == 'pending' || e.key.status == 'confirmed') &&
-              now.isBefore(e.value.start),
-        )
-        .toList()
-      ..sort((a, b) => a.value.start.compareTo(b.value.start));
+    final upcomingPaid =
+        windows.entries
+            .where(
+              (e) =>
+                  e.key.paymentStatus == 'paid' &&
+                  (e.key.status == 'pending' || e.key.status == 'confirmed') &&
+                  now.isBefore(e.value.start),
+            )
+            .toList()
+          ..sort((a, b) => a.value.start.compareTo(b.value.start));
 
-    final reschedulableBooking =
-        upcomingPaid.isNotEmpty ? upcomingPaid.first.key : null;
+    final reschedulableBooking = upcomingPaid.isNotEmpty
+        ? upcomingPaid.first.key
+        : null;
 
     if (paidNotCancelled.isEmpty) {
       return _CommunicationGate(
@@ -216,7 +222,9 @@ class DoctorDetailScreen extends StatelessWidget {
 
     if (upcomingConfirmed.isNotEmpty) {
       final next = upcomingConfirmed.first;
-      final when = DateFormat('EEE, dd MMM yyyy HH:mm').format(next.value.start);
+      final when = DateFormat(
+        'EEE, dd MMM yyyy HH:mm',
+      ).format(next.value.start);
       return _CommunicationGate(
         canCommunicate: false,
         message: 'Communication opens at $when and locks when the slot ends.',
@@ -238,15 +246,16 @@ class DoctorDetailScreen extends StatelessWidget {
       );
     }
 
-    final endedConfirmed = windows.entries
-        .where(
-          (e) =>
-              e.key.paymentStatus == 'paid' &&
-              e.key.status == 'confirmed' &&
-              !now.isBefore(e.value.end),
-        )
-        .toList()
-      ..sort((a, b) => b.value.end.compareTo(a.value.end));
+    final endedConfirmed =
+        windows.entries
+            .where(
+              (e) =>
+                  e.key.paymentStatus == 'paid' &&
+                  e.key.status == 'confirmed' &&
+                  !now.isBefore(e.value.end),
+            )
+            .toList()
+          ..sort((a, b) => b.value.end.compareTo(a.value.end));
 
     if (endedConfirmed.isNotEmpty) {
       return _CommunicationGate(
@@ -618,13 +627,15 @@ class DoctorDetailScreen extends StatelessWidget {
                                           scheme: 'sms',
                                           path: doctor.phoneNumber,
                                           queryParameters: <String, String>{
-                                            'body': 'Hello Dr. ${doctor.name}, ',
+                                            'body':
+                                                'Hello Dr. ${doctor.name}, ',
                                           },
                                         );
                                         if (await canLaunchUrl(smsUri)) {
                                           await launchUrl(
                                             smsUri,
-                                            mode: LaunchMode.externalApplication,
+                                            mode:
+                                                LaunchMode.externalApplication,
                                           );
                                         } else {
                                           throw 'Could not launch SMS app';
@@ -643,11 +654,8 @@ class DoctorDetailScreen extends StatelessWidget {
                                     iconColor: Colors.green[400]!,
                                     onTap: () {
                                       guardAndRun(() async {
-                                        String phoneNumber =
-                                            doctor.phoneNumber.replaceAll(
-                                          RegExp(r'[^\d+]'),
-                                          '',
-                                        );
+                                        String phoneNumber = doctor.phoneNumber
+                                            .replaceAll(RegExp(r'[^\d+]'), '');
                                         if (!phoneNumber.startsWith('+')) {
                                           if (phoneNumber.startsWith('0')) {
                                             phoneNumber =
@@ -662,7 +670,8 @@ class DoctorDetailScreen extends StatelessWidget {
                                         if (await canLaunchUrl(whatsappUri)) {
                                           await launchUrl(
                                             whatsappUri,
-                                            mode: LaunchMode.externalApplication,
+                                            mode:
+                                                LaunchMode.externalApplication,
                                           );
                                         } else {
                                           throw 'Could not launch WhatsApp';
@@ -688,7 +697,8 @@ class DoctorDetailScreen extends StatelessWidget {
                                         if (await canLaunchUrl(telUri)) {
                                           await launchUrl(
                                             telUri,
-                                            mode: LaunchMode.externalApplication,
+                                            mode:
+                                                LaunchMode.externalApplication,
                                           );
                                         } else {
                                           throw 'Could not launch dialer';
@@ -711,7 +721,9 @@ class DoctorDetailScreen extends StatelessWidget {
                                             color: Color(0xFF57E659),
                                           ),
                                           shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(16),
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
                                           ),
                                         ),
                                         icon: const Icon(
@@ -781,226 +793,417 @@ class DoctorDetailScreen extends StatelessWidget {
       return;
     }
 
-    String? selectedDate;
-    await showDialog(
+    final doctorService = DoctorService();
+
+    Future<List<String>> loadAvailableSlots(String date) async {
+      final slots = doctor.availabilitySlots[date] ?? [];
+      final results = await Future.wait(
+        slots.map((slot) async {
+          final isBooked = await doctorService.isSlotBooked(
+            doctor.id,
+            date,
+            slot,
+          );
+          return isBooked ? null : slot;
+        }),
+      );
+      return results.whereType<String>().toList();
+    }
+
+    final result = await showModalBottomSheet<Map<String, String>>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          title: Text(
-            'Select Available Date',
-            style: GoogleFonts.inter(color: Colors.white),
-          ),
-          content: Container(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: upcomingDates.length,
-              itemBuilder: (context, index) {
-                final date = upcomingDates[index];
-                return ListTile(
-                  title: Text(
-                    DateFormat(
-                      'EEEE, dd MMM yyyy',
-                    ).format(DateTime.parse(date)),
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                  ),
-                  onTap: () {
-                    selectedDate = date;
-                    Navigator.pop(context);
-                  },
-                );
-              },
-            ),
-          ),
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F141D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        String selectedDate = upcomingDates.first;
+        String? selectedSlot;
+        Future<List<String>> availableSlotsFuture = loadAvailableSlots(
+          selectedDate,
         );
-      },
-    );
 
-    if (selectedDate != null) {
-      if (DateUtilsX.isPastDate(selectedDate!)) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('That date has already passed. Pick another date.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      final List<String> availableSlots = doctor.availabilitySlots[selectedDate] ??
-          [];
-
-      if (availableSlots.isEmpty) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No time slots available for this date.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      String? selectedSlot;
-      final doctorService = DoctorService();
-
-      if (context.mounted) {
-        await showDialog(
-          context: context,
-          builder: (context) {
-            return AlertDialog(
-              backgroundColor: const Color(0xFF1E1E1E),
-              title: Text(
-                'Select Time Slot',
-                style: GoogleFonts.inter(color: Colors.white),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
               ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: FutureBuilder<List<String>>(
-                  future: Future.wait(
-                    availableSlots.map((slot) async {
-                      final isBooked = await doctorService.isSlotBooked(
-                        doctor.id,
-                        selectedDate!,
-                        slot,
-                      );
-                      return isBooked ? '' : slot;
-                    }),
-                  ).then((results) => results.where((s) => s.isNotEmpty).toList()),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFF57E659),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 56,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Book Appointment',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Choose your preferred time slot',
+                    style: GoogleFonts.inter(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF111827),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white.withOpacity(0.06)),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor: const Color(0xFF57E659),
+                          backgroundImage: doctor.image.isNotEmpty
+                              ? NetworkImage(doctor.image)
+                              : null,
+                          child: doctor.image.isEmpty
+                              ? const Icon(
+                                  Icons.person,
+                                  color: Colors.black,
+                                  size: 28,
+                                )
+                              : null,
                         ),
-                      );
-                    }
-                    final freeSlots = snapshot.data ?? [];
-                    if (freeSlots.isEmpty) {
-                      return const Text(
-                        'All slots are fully booked for this date.',
-                        style: TextStyle(color: Colors.grey),
-                      );
-                    }
-                    return ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: freeSlots.length,
-                      itemBuilder: (context, index) {
-                        final slot = freeSlots[index];
-                        return ListTile(
-                          title: Text(
-                            slot,
-                            style: const TextStyle(color: Colors.white),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                doctor.name,
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                doctor.specialty,
+                                style: GoogleFonts.inter(
+                                  color: const Color(0xFF57E659),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Select Date',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 90,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: upcomingDates.length,
+                      itemBuilder: (context, index) {
+                        final date = upcomingDates[index];
+                        final dt = DateTime.parse(date);
+                        final isSelected = selectedDate == date;
+                        return GestureDetector(
                           onTap: () {
-                            selectedSlot = slot;
-                            Navigator.pop(context);
+                            setState(() {
+                              selectedDate = date;
+                              selectedSlot = null;
+                              availableSlotsFuture = loadAvailableSlots(date);
+                            });
                           },
+                          child: Container(
+                            width: 88,
+                            margin: EdgeInsets.only(
+                              right: index == upcomingDates.length - 1 ? 0 : 12,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                              horizontal: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0xFF57E659)
+                                  : const Color(0xFF111827),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFF57E659)
+                                    : Colors.white.withOpacity(0.08),
+                              ),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  DateFormat('E').format(dt),
+                                  style: GoogleFonts.inter(
+                                    color: isSelected
+                                        ? Colors.black
+                                        : Colors.white70,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  DateFormat('d').format(dt),
+                                  style: GoogleFonts.inter(
+                                    color: isSelected
+                                        ? Colors.black
+                                        : Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 22,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  DateFormat('MMM').format(dt),
+                                  style: GoogleFonts.inter(
+                                    color: isSelected
+                                        ? Colors.black
+                                        : Colors.white70,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         );
                       },
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Available Time Slots',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FutureBuilder<List<String>>(
+                    future: availableSlotsFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: CircularProgressIndicator(
+                              color: Color(0xFF57E659),
+                            ),
+                          ),
+                        );
+                      }
+                      final slots = snapshot.data ?? [];
+                      if (slots.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Text(
+                            'No available slots for this date.',
+                            style: GoogleFonts.inter(
+                              color: Colors.white54,
+                              fontSize: 14,
+                            ),
+                          ),
+                        );
+                      }
+                      return Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: slots.map((slot) {
+                          final isChosen = slot == selectedSlot;
+                          return GestureDetector(
+                            onTap: () => setState(() => selectedSlot = slot),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isChosen
+                                    ? const Color(0xFF57E659)
+                                    : const Color(0xFF111827),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: isChosen
+                                      ? const Color(0xFF57E659)
+                                      : Colors.white.withOpacity(0.08),
+                                ),
+                              ),
+                              child: Text(
+                                slot,
+                                style: GoogleFonts.inter(
+                                  color: isChosen ? Colors.black : Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: selectedSlot == null
+                          ? null
+                          : () {
+                              Navigator.pop(sheetContext, {
+                                'date': selectedDate,
+                                'slot': selectedSlot!,
+                              });
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: selectedSlot == null
+                            ? Colors.white12
+                            : const Color(0xFF57E659),
+                        foregroundColor: selectedSlot == null
+                            ? Colors.white54
+                            : Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      child: Text(
+                        'Confirm Slot',
+                        style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           },
         );
+      },
+    );
+
+    if (result == null) return;
+
+    final selectedDate = result['date'];
+    final selectedSlot = result['slot'];
+    if (selectedDate == null || selectedSlot == null) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please login to book an appointment')),
+        );
       }
+      return;
+    }
 
-      if (selectedSlot != null) {
-        final user = FirebaseAuth.instance.currentUser;
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => const _BookingReasonDialog(),
+    );
 
-        if (user == null) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Please login to book an appointment'),
+    if (reason == null || reason.trim().isEmpty) return;
+
+    final paymentResult = await _showPaymentModal(
+      context,
+      doctor.fee.toDouble(),
+      user,
+    );
+
+    if (paymentResult != null && paymentResult['success'] == true) {
+      final booking = Booking(
+        id: '',
+        doctorId: doctor.id,
+        patientId: user.uid,
+        patientName:
+            user.displayName ?? user.email?.split('@').first ?? 'Patient',
+        reason: reason.trim(),
+        date: selectedDate,
+        time: selectedSlot,
+        status: 'pending',
+        paymentStatus: 'paid',
+        transactionRef: paymentResult['reference'],
+        amount: doctor.fee.toDouble(),
+        createdAt: DateTime.now(),
+      );
+
+      try {
+        await doctorService.createBookingAtomic(booking);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Booking created! Awaiting doctor confirmation. Payment successful.',
               ),
-            );
-          }
-          return;
+              backgroundColor: Colors.orange,
+            ),
+          );
+          await _promptWhatsAppNotifyDoctor(context, booking: booking);
         }
-
-        // Ask for booking reason (required)
-        String? reason;
+      } catch (e) {
         if (context.mounted) {
-          reason = await showDialog<String>(
-            context: context,
-            builder: (dialogContext) => const _BookingReasonDialog(),
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                e.toString().contains('already been booked')
+                    ? 'This slot was just taken by another patient. Please contact support if you were charged.'
+                    : 'Error saving booking: $e',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
           );
         }
-        if (reason == null || reason.trim().isEmpty) return;
-
-        // Show Payment Modal
-        if (context.mounted) {
-          final paymentResult = await _showPaymentModal(
-            context,
-            doctor.fee.toDouble(),
-            user,
-          );
-
-          if (paymentResult != null && paymentResult['success'] == true) {
-            final booking = Booking(
-              id: '', // Will be generated by Firestore
-              doctorId: doctor.id,
-              patientId: user.uid,
-              patientName:
-                  user.displayName ?? user.email?.split('@').first ?? 'Patient',
-              reason: reason.trim(),
-              date: selectedDate!,
-              time: selectedSlot!,
-              status: 'pending', // Doctor must confirm before communication is enabled
-              paymentStatus: 'paid',
-              transactionRef: paymentResult['reference'],
-              amount: doctor.fee.toDouble(),
-              createdAt: DateTime.now(),
-            );
-
-            try {
-              await doctorService.createBookingAtomic(booking);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Booking created! Awaiting doctor confirmation. Payment successful.',
-                    ),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-                await _promptWhatsAppNotifyDoctor(context, booking: booking);
-              }
-            } catch (e) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      e.toString().contains('already been booked')
-                          ? 'This slot was just taken by another patient. Please contact support if you were charged.'
-                          : 'Error saving booking: $e',
-                    ),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 5),
-                  ),
-                );
-              }
-            }
-          } else if (paymentResult != null) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    paymentResult['message'] ?? 'Payment failed or cancelled',
-                  ),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          }
-        }
+      }
+    } else if (paymentResult != null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              paymentResult['message'] ?? 'Payment failed or cancelled',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -1011,18 +1214,23 @@ class DoctorDetailScreen extends StatelessWidget {
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please login first.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please login first.')));
       return;
     }
 
-    final currentWindow =
-        DateUtilsX.tryParseAppointmentWindow(booking.date, booking.time);
-    if (currentWindow != null && !DateTime.now().isBefore(currentWindow.start)) {
+    final currentWindow = DateUtilsX.tryParseAppointmentWindow(
+      booking.date,
+      booking.time,
+    );
+    if (currentWindow != null &&
+        !DateTime.now().isBefore(currentWindow.start)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('You can only reschedule before the appointment starts.'),
+          content: Text(
+            'You can only reschedule before the appointment starts.',
+          ),
           backgroundColor: Colors.orange,
         ),
       );
@@ -1060,7 +1268,9 @@ class DoctorDetailScreen extends StatelessWidget {
                 final isCurrent = date == booking.date;
                 return ListTile(
                   title: Text(
-                    DateFormat('EEEE, dd MMM yyyy').format(DateTime.parse(date)),
+                    DateFormat(
+                      'EEEE, dd MMM yyyy',
+                    ).format(DateTime.parse(date)),
                     style: TextStyle(
                       color: isCurrent ? const Color(0xFF57E659) : Colors.white,
                       fontSize: 14,
@@ -1125,23 +1335,29 @@ class DoctorDetailScreen extends StatelessWidget {
             content: SizedBox(
               width: double.maxFinite,
               child: FutureBuilder<List<String>>(
-                future: Future.wait(
-                  availableSlots.map((slot) async {
-                    final isCurrent =
-                        selectedDate == booking.date && slot == booking.time;
-                    if (isCurrent) return slot;
-                    final isBooked = await doctorService.isSlotBooked(
-                      doctor.id,
-                      selectedDate!,
-                      slot,
-                    );
-                    return isBooked ? '' : slot;
-                  }),
-                ).then((results) => results.where((s) => s.isNotEmpty).toList()),
+                future:
+                    Future.wait(
+                      availableSlots.map((slot) async {
+                        final isCurrent =
+                            selectedDate == booking.date &&
+                            slot == booking.time;
+                        if (isCurrent) return slot;
+                        final isBooked = await doctorService.isSlotBooked(
+                          doctor.id,
+                          selectedDate!,
+                          slot,
+                        );
+                        return isBooked ? '' : slot;
+                      }),
+                    ).then(
+                      (results) => results.where((s) => s.isNotEmpty).toList(),
+                    ),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
-                      child: CircularProgressIndicator(color: Color(0xFF57E659)),
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF57E659),
+                      ),
                     );
                   }
                   final freeSlots = snapshot.data ?? [];
@@ -1165,14 +1381,17 @@ class DoctorDetailScreen extends StatelessWidget {
                             color: isCurrent
                                 ? const Color(0xFF57E659)
                                 : Colors.white,
-                            fontWeight:
-                                isCurrent ? FontWeight.w800 : FontWeight.w600,
+                            fontWeight: isCurrent
+                                ? FontWeight.w800
+                                : FontWeight.w600,
                           ),
                         ),
                         subtitle: isCurrent
                             ? Text(
                                 'Current time',
-                                style: GoogleFonts.inter(color: Colors.grey[400]),
+                                style: GoogleFonts.inter(
+                                  color: Colors.grey[400],
+                                ),
                               )
                             : null,
                         onTap: () {
@@ -1309,18 +1528,16 @@ class DoctorDetailScreen extends StatelessWidget {
                             'Ecocash',
                             'PZW201',
                             selectedProvider,
-                            (val) => setModalState(
-                              () => selectedProvider = val,
-                            ),
+                            (val) =>
+                                setModalState(() => selectedProvider = val),
                           ),
                           const SizedBox(width: 12),
                           _buildProviderOption(
                             'OneMoney',
                             'PZW202',
                             selectedProvider,
-                            (val) => setModalState(
-                              () => selectedProvider = val,
-                            ),
+                            (val) =>
+                                setModalState(() => selectedProvider = val),
                           ),
                         ],
                       ),
@@ -1720,10 +1937,7 @@ class _BookingReasonDialogState extends State<_BookingReasonDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text(
-            'Cancel',
-            style: TextStyle(color: Colors.grey),
-          ),
+          child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
         ),
         TextButton(
           onPressed: () {

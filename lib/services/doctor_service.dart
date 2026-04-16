@@ -2,10 +2,12 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:zimdoctors/models/doctor.dart';
+import 'package:zimdoctors/models/doctor_recommendation.dart';
 import 'package:zimdoctors/models/booking.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:zimdoctors/services/notification_service.dart';
 import 'package:zimdoctors/services/disease_api_service.dart';
+import 'package:zimdoctors/utils/doctor_recommendation_utils.dart';
 
 class DoctorService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -42,8 +44,55 @@ class DoctorService {
     }
   }
 
+  Future<List<Doctor>> findDoctorsBySpecialty(String specialty) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection(_collectionName)
+          .where('specialty', isEqualTo: specialty)
+          .get();
 
- 
+      if (querySnapshot.docs.isNotEmpty) {
+        return querySnapshot.docs
+            .map(
+              (doc) =>
+                  Doctor.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+            )
+            .toList();
+      }
+
+      final allDocs = await _firestore.collection(_collectionName).get();
+      return allDocs.docs
+          .map(
+            (doc) => Doctor.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+          )
+          .where(
+            (doc) =>
+                doc.specialty.toLowerCase().contains(specialty.toLowerCase()),
+          )
+          .toList();
+    } catch (e) {
+      print('Error searching doctors by specialty: $e');
+      return [];
+    }
+  }
+
+  Future<DoctorRecommendation> matchDoctorRecommendation(
+    String symptoms,
+  ) async {
+    final doctorPrediction = await _apiService.predictDoctor(symptoms);
+    final specialist = doctorPrediction['specialty'] ?? 'General Practitioner';
+    final urgency = doctorPrediction['urgency'] ?? 'Medium';
+    final doctors = await findDoctorsBySpecialty(specialist);
+
+    return DoctorRecommendation(
+      specialty: specialist.trim().isEmpty
+          ? 'General Practitioner'
+          : specialist.trim(),
+      urgency: urgency,
+      doctors: doctors,
+    );
+  }
+
   Future<String> uploadProfileImage(File imageFile, String userId) async {
     print('Starting doctor image upload for $userId');
     if (!await imageFile.exists()) {
@@ -71,7 +120,6 @@ class DoctorService {
     }
   }
 
-  
   Future<void> createDoctor(Doctor doctor) async {
     try {
       await _firestore
@@ -84,12 +132,10 @@ class DoctorService {
     }
   }
 
- 
   Future<void> addDoctor(Doctor doctor) async {
     await _firestore.collection(_collectionName).add(doctor.toMap());
   }
 
- 
   Future<void> updateDoctor(Doctor doctor) async {
     try {
       await _firestore
@@ -102,14 +148,16 @@ class DoctorService {
     }
   }
 
-  
   Future<void> createBooking(Booking booking) async {
     try {
-      final docRef = await _firestore.collection('bookings').add(booking.toMap());
+      final docRef = await _firestore
+          .collection('bookings')
+          .add(booking.toMap());
       await _notificationService.sendNotification(
         userId: booking.doctorId,
         title: 'New Appointment',
-        body: 'You have a new booking from ${booking.patientName} on ${booking.date} at ${booking.time}. Reason: ${booking.reason}',
+        body:
+            'You have a new booking from ${booking.patientName} on ${booking.date} at ${booking.time}. Reason: ${booking.reason}',
         type: 'booking',
         data: {
           'bookingId': docRef.id,
@@ -129,7 +177,6 @@ class DoctorService {
   Future<void> createBookingAtomic(Booking booking) async {
     late DocumentReference<Map<String, dynamic>> docRef;
     await _firestore.runTransaction((transaction) async {
-      
       final querySnapshot = await _firestore
           .collection('bookings')
           .where('doctorId', isEqualTo: booking.doctorId)
@@ -139,18 +186,20 @@ class DoctorService {
           .get();
 
       if (querySnapshot.docs.isNotEmpty) {
-        throw Exception('This slot has already been booked by another patient.');
+        throw Exception(
+          'This slot has already been booked by another patient.',
+        );
       }
 
       docRef = _firestore.collection('bookings').doc();
       transaction.set(docRef, booking.toMap());
     });
 
-    
     await _notificationService.sendNotification(
       userId: booking.doctorId,
       title: 'New Appointment',
-      body: 'You have a new booking from ${booking.patientName} on ${booking.date} at ${booking.time}. Reason: ${booking.reason}',
+      body:
+          'You have a new booking from ${booking.patientName} on ${booking.date} at ${booking.time}. Reason: ${booking.reason}',
       type: 'booking',
       data: {
         'bookingId': docRef.id,
@@ -255,13 +304,12 @@ class DoctorService {
           final bookings = snapshot.docs.map((doc) {
             return Booking.fromMap(doc.data(), doc.id);
           }).toList();
-       
+
           bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           return bookings;
         });
   }
 
- 
   Future<Doctor?> getCurrentDoctor() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
@@ -270,7 +318,6 @@ class DoctorService {
     return null;
   }
 
-  
   Future<bool> isSlotBooked(String doctorId, String date, String time) async {
     try {
       final querySnapshot = await _firestore
@@ -297,27 +344,16 @@ class DoctorService {
 
       if (specialist == null || specialist == 'General Practitioner') {
         // If no specific specialist, return top rated or all
-        final snapshot = await _firestore.collection(_collectionName).limit(10).get();
-        return snapshot.docs.map((doc) => Doctor.fromMap(doc.data(), doc.id)).toList();
-      }
-
-      // 2. Search Firestore for doctors with that specialty
-      // Note: This assumes the 'specialization' field in Firestore matches the specialist string
-      final querySnapshot = await _firestore
-          .collection(_collectionName)
-          .where('specialization', isEqualTo: specialist)
-          .get();
-
-      if (querySnapshot.docs.isEmpty) {
-        // Fallback to keyword search if exact match fails
-        final allDocs = await _firestore.collection(_collectionName).get();
-        return allDocs.docs
+        final snapshot = await _firestore
+            .collection(_collectionName)
+            .limit(10)
+            .get();
+        return snapshot.docs
             .map((doc) => Doctor.fromMap(doc.data(), doc.id))
-            .where((doc) => doc.specialization.toLowerCase().contains(specialist.toLowerCase()))
             .toList();
       }
 
-      return querySnapshot.docs.map((doc) => Doctor.fromMap(doc.data(), doc.id)).toList();
+      return await findDoctorsBySpecialty(specialist);
     } catch (e) {
       print('Error in doctor matching: $e');
       return [];

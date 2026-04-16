@@ -124,9 +124,94 @@ class DiseaseApiService {
         ).hasMatch(trimmed);
 
     if (isQuestion) {
-      return ask(trimmed);
+      return _askThenPredictFallback(trimmed);
     }
-    return predictFromText(trimmed);
+    return _predictThenAskFallback(trimmed);
+  }
+
+  Future<dynamic> _askThenPredictFallback(String question) async {
+    late Object askError;
+    try {
+      final answer = await ask(question);
+      if (!_looksLikeUnknownAnswer(answer)) {
+        return answer;
+      }
+      final fallbackDiagnosis = await predictFromText(question);
+      if (!_looksLikeUnknownDiagnosis(fallbackDiagnosis)) {
+        return fallbackDiagnosis;
+      }
+      return answer;
+    } catch (e) {
+      askError = e;
+      try {
+        return await predictFromText(question);
+      } catch (predictError) {
+        throw Exception(
+          'Both /ask and /predict/text failed. ask: $askError; predict: $predictError',
+        );
+      }
+    }
+  }
+
+  Future<dynamic> _predictThenAskFallback(String text) async {
+    late Object predictError;
+    try {
+      final diagnosis = await predictFromText(text);
+      if (!_looksLikeUnknownDiagnosis(diagnosis)) {
+        return diagnosis;
+      }
+      final fallbackAnswer = await ask(text);
+      if (!_looksLikeUnknownAnswer(fallbackAnswer)) {
+        return fallbackAnswer;
+      }
+      return diagnosis;
+    } catch (e) {
+      predictError = e;
+      try {
+        return await ask(text);
+      } catch (askError) {
+        throw Exception(
+          'Both /predict/text and /ask failed. predict: $predictError; ask: $askError',
+        );
+      }
+    }
+  }
+
+  bool _looksLikeUnknownAnswer(String answer) {
+    final normalized = answer.trim().toLowerCase();
+    if (normalized.isEmpty || normalized == 'unknown') {
+      return true;
+    }
+    final unknownPatterns = [
+      'i don\'t know',
+      'i do not know',
+      'i am not sure',
+      'im not sure',
+      'not sure',
+      'cannot answer',
+      'unable to answer',
+      'no idea',
+      'unknown',
+      'sorry',
+      'can\'t answer',
+    ];
+    return unknownPatterns.any(normalized.contains);
+  }
+
+  bool _looksLikeUnknownDiagnosis(DiagnosisResponse response) {
+    final predicted = response.predictedDisease.trim().toLowerCase();
+    if (predicted.isEmpty || predicted == 'unknown') {
+      return true;
+    }
+    if (predicted.contains('unknown') ||
+        predicted.contains('not sure') ||
+        predicted.contains('cannot determine')) {
+      return true;
+    }
+    if (response.confidence < 10.0) {
+      return true;
+    }
+    return false;
   }
 
   Future<String> ask(String question) async {
@@ -201,4 +286,3 @@ class DiseaseApiService {
     return jsonDecode(response.body);
   }
 }
-

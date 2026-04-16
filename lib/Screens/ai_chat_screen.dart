@@ -2,10 +2,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:stts/stts.dart';
+import 'package:zimdoctors/models/doctor.dart';
+import 'package:zimdoctors/services/doctor_service.dart';
 import 'package:zimdoctors/services/disease_api_service.dart';
 import 'package:zimdoctors/Screens/doctors_screen.dart';
+import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
 import 'package:zimdoctors/utils/doctor_recommendation_utils.dart';
 import 'package:zimdoctors/models/diagnosis_response.dart';
 
@@ -13,8 +17,14 @@ class Message {
   final String text;
   final String sender; // Changed from bool isUser to String sender
   final DateTime timestamp;
+  final bool isRecommendation;
 
-  Message({required this.text, required this.sender, required this.timestamp});
+  Message({
+    required this.text,
+    required this.sender,
+    required this.timestamp,
+    this.isRecommendation = false,
+  });
 }
 
 class ChatScreen extends StatefulWidget {
@@ -45,6 +55,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _commitRecognitionOnStop = false;
   DiseaseApiService? _diseaseApi;
   String? _diseaseApiInitError;
+  final DoctorService _doctorService = DoctorService();
 
   bool _isRecording = false;
   bool _isTranscribing = false;
@@ -52,6 +63,10 @@ class _ChatScreenState extends State<ChatScreen> {
   int? _speakingMessageIndex;
 
   String? _selectedLanguage;
+  String? _recommendedSpecialty;
+  String? _recommendedUrgency;
+  List<Doctor>? _recommendedDoctors;
+  String? _doctorRecommendationError;
 
   final List<Message> _messages = [];
   String? _recommendedSearchQuery;
@@ -75,51 +90,57 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _initSpeech() {
-    _ttsStateSub = _tts.onStateChanged.listen((state) {
-      if (!mounted) return;
-      if (state == TtsState.stop) {
+    _ttsStateSub = _tts.onStateChanged.listen(
+      (state) {
+        if (!mounted) return;
+        if (state == TtsState.stop) {
+          setState(() => _speakingMessageIndex = null);
+        }
+      },
+      onError: (_) {
+        if (!mounted) return;
         setState(() => _speakingMessageIndex = null);
-      }
-    }, onError: (_) {
-      if (!mounted) return;
-      setState(() => _speakingMessageIndex = null);
-    });
+      },
+    );
 
     _sttResultSub = _stt.onResultChanged.listen((result) {
       _lastRecognitionText = result.text;
     });
 
-    _sttStateSub = _stt.onStateChanged.listen((state) {
-      if (state != SttState.stop) return;
-      if (!mounted) return;
+    _sttStateSub = _stt.onStateChanged.listen(
+      (state) {
+        if (state != SttState.stop) return;
+        if (!mounted) return;
 
-      if (_isRecording) {
-        setState(() => _isRecording = false);
-      }
+        if (_isRecording) {
+          setState(() => _isRecording = false);
+        }
 
-      if (_commitRecognitionOnStop) {
-        _commitRecognitionOnStop = false;
-        final recognized = _lastRecognitionText.trim();
-        if (recognized.isNotEmpty) {
-          setState(() {
-            _controller.text = recognized;
-            _controller.selection = TextSelection.fromPosition(
-              TextPosition(offset: _controller.text.length),
-            );
-          });
+        if (_commitRecognitionOnStop) {
+          _commitRecognitionOnStop = false;
+          final recognized = _lastRecognitionText.trim();
+          if (recognized.isNotEmpty) {
+            setState(() {
+              _controller.text = recognized;
+              _controller.selection = TextSelection.fromPosition(
+                TextPosition(offset: _controller.text.length),
+              );
+            });
+          }
+          if (_isTranscribing) {
+            setState(() => _isTranscribing = false);
+          }
         }
-        if (_isTranscribing) {
-          setState(() => _isTranscribing = false);
-        }
-      }
-    }, onError: (e) {
-      if (!mounted) return;
-      setState(() {
-        _voiceInitError = 'Speech recognition error: $e';
-        _isRecording = false;
-        _isTranscribing = false;
-      });
-    });
+      },
+      onError: (e) {
+        if (!mounted) return;
+        setState(() {
+          _voiceInitError = 'Speech recognition error: $e';
+          _isRecording = false;
+          _isTranscribing = false;
+        });
+      },
+    );
 
     unawaited(_configureTtsDefaults());
     unawaited(_checkVoiceSupport());
@@ -140,13 +161,15 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       if (!sttSupported) {
         setState(
-          () => _voiceInitError = 'Speech-to-text is not supported on this device.',
+          () => _voiceInitError =
+              'Speech-to-text is not supported on this device.',
         );
         return;
       }
       if (!ttsSupported) {
         setState(
-          () => _voiceInitError = 'Text-to-speech is not supported on this device.',
+          () => _voiceInitError =
+              'Text-to-speech is not supported on this device.',
         );
       }
     } catch (e) {
@@ -244,18 +267,36 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     try {
-      final reply = await diseaseApi.reply(text);
-      if (!mounted) return;
-
       String displayReply;
-      String? inferredSpecialist;
+      String inferredSpecialist;
+      String inferredUrgency;
 
-      if (reply is DiagnosisResponse) {
-        displayReply = reply.displayString;
-        inferredSpecialist = reply.suggestedSpecialist;
+      if (widget.recommendDoctor) {
+        // Use doctor prediction endpoint directly
+        final doctorPrediction = await diseaseApi.predictDoctor(text);
+        inferredSpecialist =
+            doctorPrediction['specialty'] ?? 'General Practitioner';
+        inferredUrgency = doctorPrediction['urgency'] ?? 'Medium';
+        displayReply =
+            'Specialist: $inferredSpecialist\nUrgency: $inferredUrgency';
       } else {
-        displayReply = reply.toString();
-        inferredSpecialist = DoctorRecommendationUtils.inferSearchQuery(displayReply);
+        // Use regular reply for disease diagnosis
+        final reply = await diseaseApi.reply(text);
+        if (!mounted) return;
+
+        if (reply is DiagnosisResponse) {
+          displayReply = reply.displayString;
+          inferredSpecialist =
+              reply.suggestedSpecialist ??
+              DoctorRecommendationUtils.inferSearchQuery(reply.displayString);
+          inferredUrgency = '';
+        } else {
+          displayReply = reply.toString();
+          inferredSpecialist = DoctorRecommendationUtils.inferSearchQuery(
+            reply.toString(),
+          );
+          inferredUrgency = '';
+        }
       }
 
       setState(() {
@@ -266,6 +307,23 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         if (widget.recommendDoctor) {
           _recommendedSearchQuery = inferredSpecialist;
+          _recommendedSpecialty = inferredSpecialist;
+          _recommendedUrgency = inferredUrgency;
+          // Add recommendation message below the AI response
+          _messages.add(
+            Message(
+              text: 'RECOMMENDATION',
+              sender: 'AI',
+              timestamp: DateTime.now(),
+              isRecommendation: true,
+            ),
+          );
+          // Hide the CTA after 30 seconds
+          Future.delayed(const Duration(seconds: 30), () {
+            if (mounted) {
+              setState(() => _recommendedSearchQuery = null);
+            }
+          });
         }
         _firestore.collection('messages').add({
           'text': displayReply,
@@ -273,6 +331,10 @@ class _ChatScreenState extends State<ChatScreen> {
           'timestamp': DateTime.now(),
         });
       });
+
+      if (widget.recommendDoctor) {
+        await _loadDoctorRecommendations(inferredSpecialist);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -301,6 +363,190 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Future<void> _loadDoctorRecommendations(String specialist) async {
+    final resolvedSpecialty = specialist.trim().isEmpty
+        ? 'General Practitioner'
+        : specialist.trim();
+    final urgency = _recommendedUrgency ?? 'Unknown';
+
+    if (!mounted) return;
+    setState(() {
+      _recommendedSpecialty = resolvedSpecialty;
+      _recommendedUrgency = urgency;
+      _recommendedDoctors = null;
+      _doctorRecommendationError = null;
+    });
+
+    try {
+      final doctors = await _doctorService.findDoctorsBySpecialty(
+        resolvedSpecialty,
+      );
+      if (!mounted) return;
+      setState(() {
+        _recommendedDoctors = doctors;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _recommendedDoctors = [];
+        _doctorRecommendationError = e.toString();
+      });
+    }
+  }
+
+  Widget _buildDoctorRecommendationPanel() {
+    if (!widget.recommendDoctor || _recommendedSpecialty == null) {
+      return const SizedBox.shrink();
+    }
+
+    final doctors = _recommendedDoctors;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withAlpha(20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Doctor recommendation',
+            style: GoogleFonts.inter(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Specialty: $_recommendedSpecialty',
+            style: GoogleFonts.inter(
+              color: Colors.white.withAlpha(220),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Urgency: ${_recommendedUrgency ?? 'Unknown'}',
+            style: GoogleFonts.inter(
+              color: Colors.white.withAlpha(220),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_doctorRecommendationError != null)
+            Text(
+              'Unable to load matching doctors: $_doctorRecommendationError',
+              style: GoogleFonts.inter(
+                color: Colors.orangeAccent,
+                fontSize: 12,
+              ),
+            ),
+          if (_recommendedDoctors == null)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_recommendedDoctors!.isEmpty)
+            Text(
+              'No doctors found for this specialty. Tap search to browse all doctors.',
+              style: GoogleFonts.inter(
+                color: Colors.white.withAlpha(200),
+                fontSize: 12,
+              ),
+            )
+          else ...[
+            for (final doctor in _recommendedDoctors!.take(3))
+              GestureDetector(
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    DoctorDetailScreen.id,
+                    arguments: doctor,
+                  );
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF141414),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withAlpha(12)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        doctor.name,
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        doctor.specialty,
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF57E659),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        doctor.location,
+                        style: GoogleFonts.inter(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          style: TextButton.styleFrom(
+                            backgroundColor: const Color(0xFF57E659),
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.pushNamed(
+                              context,
+                              DoctorDetailScreen.id,
+                              arguments: doctor,
+                            );
+                          },
+                          child: Text(
+                            'Book now',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _toggleRecording() async {
     if (_isTranscribing) return;
     if (_voiceInitError != null) {
@@ -309,10 +555,13 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (_isRecording) {
-      setState(() => _isTranscribing = true);
+      setState(() {
+        _isTranscribing = true;
+        _isRecording = false;
+      });
       _commitRecognitionOnStop = true;
       try {
-        await _stt.stop();
+        await _safeSttStop();
       } catch (e) {
         _commitRecognitionOnStop = false;
         if (!mounted) return;
@@ -332,10 +581,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastRecognitionText = '';
       _commitRecognitionOnStop = false;
       await _stt.start(
-        const SttRecognitionOptions(
-          punctuation: true,
-          offline: true,
-        ),
+        const SttRecognitionOptions(punctuation: true, offline: true),
       );
       if (!mounted) return;
       setState(() => _isRecording = true);
@@ -396,6 +642,46 @@ class _ChatScreenState extends State<ChatScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _safeSttStop() async {
+    try {
+      await _stt.stop();
+    } catch (e) {
+      if (e is PlatformException &&
+          e.message?.contains('No active stream') == true) {
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _safeTtsStop() async {
+    try {
+      await _tts.stop();
+    } catch (e) {
+      if (e is PlatformException &&
+          e.message?.contains('No active stream') == true) {
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _safeSttDispose() async {
+    try {
+      await _stt.dispose();
+    } catch (_) {
+      // Ignore disposal errors from inactive speech streams.
+    }
+  }
+
+  Future<void> _safeTtsDispose() async {
+    try {
+      await _tts.dispose();
+    } catch (_) {
+      // Ignore disposal errors from inactive TTS engine.
+    }
   }
 
   String _greetingForLanguage(String language) {
@@ -528,8 +814,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final helper = selected == null
         ? 'This will control how the AI replies.'
         : (selected == 'shona'
-            ? 'AI ichapindura muShona.'
-            : 'AI will reply in English.');
+              ? 'AI ichapindura muShona.'
+              : 'AI will reply in English.');
 
     return Container(
       width: double.infinity,
@@ -663,10 +949,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   color: Colors.orangeAccent,
                   fontSize: 12,
                 ),
-                ),
               ),
+            ),
           _buildLanguageBanner(),
           if (widget.recommendDoctor) _buildRecommendationCta(),
+          _buildQuickSuggestions(),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -674,6 +961,9 @@ class _ChatScreenState extends State<ChatScreen> {
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final message = _messages[index];
+                if (message.isRecommendation) {
+                  return _buildDoctorRecommendationPanel();
+                }
                 return _buildMessageBubble(message, index);
               },
             ),
@@ -719,10 +1009,8 @@ class _ChatScreenState extends State<ChatScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => DoctorsScreen(
-                    initialQuery: query,
-                    autofocusSearch: true,
-                  ),
+                  builder: (_) =>
+                      DoctorsScreen(initialQuery: query, autofocusSearch: true),
                 ),
               );
             },
@@ -735,6 +1023,71 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildQuickSuggestions() {
+    final suggestions = [
+      {'label': 'Find a doctor', 'action': _openDoctors},
+      {'label': 'Book appointment', 'action': _openDoctors},
+      {'label': 'Emergency services', 'action': _showEmergencyHelp},
+      {'label': 'Symptoms checker', 'action': _startSymptomCheck},
+    ];
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: suggestions.map((item) {
+          return ElevatedButton(
+            onPressed: item['action'] as void Function(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E1E1E),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            child: Text(
+              item['label'] as String,
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  void _openDoctors() {
+    Navigator.pushNamed(context, DoctorsScreen.id);
+  }
+
+  void _showEmergencyHelp() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'For emergency medical help please contact local emergency services.',
+          style: GoogleFonts.inter(color: Colors.white),
+        ),
+        backgroundColor: Colors.orangeAccent,
+      ),
+    );
+  }
+
+  void _startSymptomCheck() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ChatScreen(recommendDoctor: true),
       ),
     );
   }
@@ -903,12 +1256,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    unawaited(_tts.stop());
+    unawaited(_safeTtsStop());
     _sttResultSub?.cancel();
     _sttStateSub?.cancel();
     _ttsStateSub?.cancel();
-    unawaited(_stt.dispose());
-    unawaited(_tts.dispose());
+    unawaited(_safeSttDispose());
+    unawaited(_safeTtsDispose());
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -987,7 +1340,9 @@ class _LanguageOptionTile extends StatelessWidget {
                 width: 22,
                 height: 22,
                 decoration: BoxDecoration(
-                  color: selected ? const Color(0xFF57E659) : Colors.transparent,
+                  color: selected
+                      ? const Color(0xFF57E659)
+                      : Colors.transparent,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: selected
