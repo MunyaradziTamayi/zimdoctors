@@ -826,293 +826,318 @@ class DoctorDetailScreen extends StatelessWidget {
 
         return StatefulBuilder(
           builder: (context, setState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 56,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
+            final viewInsetsBottom =
+                MediaQuery.of(sheetContext).viewInsets.bottom;
+            final maxHeight = MediaQuery.of(sheetContext).size.height * 0.88;
+
+            return SafeArea(
+              top: false,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxHeight),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      left: 20,
+                      right: 20,
+                      top: 20,
+                      bottom: viewInsetsBottom + 24,
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Book Appointment',
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Choose your preferred time slot',
-                    style: GoogleFonts.inter(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF111827),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withOpacity(0.06)),
-                    ),
-                    child: Row(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        CircleAvatar(
-                          radius: 28,
-                          backgroundColor: const Color(0xFF57E659),
-                          backgroundImage: doctor.image.isNotEmpty
-                              ? NetworkImage(doctor.image)
-                              : null,
-                          child: doctor.image.isEmpty
-                              ? const Icon(
-                                  Icons.person,
-                                  color: Colors.black,
-                                  size: 28,
-                                )
-                              : null,
+                        Center(
+                          child: Container(
+                            width: 56,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        const SizedBox(height: 18),
+                        Text(
+                          'Book Appointment',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Choose your preferred time slot',
+                          style: GoogleFonts.inter(
+                            color: Colors.white.withOpacity(0.7),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF111827),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.06),
+                            ),
+                          ),
+                          child: Row(
                             children: [
-                              Text(
-                                doctor.name,
-                                style: GoogleFonts.inter(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                              CircleAvatar(
+                                radius: 28,
+                                backgroundColor: const Color(0xFF57E659),
+                                backgroundImage: doctor.image.isNotEmpty
+                                    ? NetworkImage(doctor.image)
+                                    : null,
+                                child: doctor.image.isEmpty
+                                    ? const Icon(
+                                        Icons.person,
+                                        color: Colors.black,
+                                        size: 28,
+                                      )
+                                    : null,
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                doctor.specialty,
-                                style: GoogleFonts.inter(
-                                  color: const Color(0xFF57E659),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      doctor.name,
+                                      style: GoogleFonts.inter(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      doctor.specialty,
+                                      style: GoogleFonts.inter(
+                                        color: const Color(0xFF57E659),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
+                        const SizedBox(height: 18),
+                        Text(
+                          'Select Date',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 110,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: upcomingDates.length,
+                            itemBuilder: (context, index) {
+                              final date = upcomingDates[index];
+                              final dt = DateTime.parse(date);
+                              final isSelected = selectedDate == date;
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    selectedDate = date;
+                                    selectedSlot = null;
+                                    availableSlotsFuture = loadAvailableSlots(
+                                      date,
+                                    );
+                                  });
+                                },
+                                child: Container(
+                                  width: 88,
+                                  margin: EdgeInsets.only(
+                                    right: index == upcomingDates.length - 1
+                                        ? 0
+                                        : 12,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFF57E659)
+                                        : const Color(0xFF111827),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color(0xFF57E659)
+                                          : Colors.white.withOpacity(0.08),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        DateFormat('E').format(dt),
+                                        style: GoogleFonts.inter(
+                                          color: isSelected
+                                              ? Colors.black
+                                              : Colors.white70,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        DateFormat('d').format(dt),
+                                        style: GoogleFonts.inter(
+                                          color: isSelected
+                                              ? Colors.black
+                                              : Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 22,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        DateFormat('MMM').format(dt),
+                                        style: GoogleFonts.inter(
+                                          color: isSelected
+                                              ? Colors.black
+                                              : Colors.white70,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          'Available Time Slots',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        FutureBuilder<List<String>>(
+                          future: availableSlotsFuture,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 20),
+                                  child: CircularProgressIndicator(
+                                    color: Color(0xFF57E659),
+                                  ),
+                                ),
+                              );
+                            }
+                            final slots = snapshot.data ?? [];
+                            if (slots.isEmpty) {
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                child: Text(
+                                  'No available slots for this date.',
+                                  style: GoogleFonts.inter(
+                                    color: Colors.white54,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              );
+                            }
+                            return Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: slots.map((slot) {
+                                final isChosen = slot == selectedSlot;
+                                return GestureDetector(
+                                  onTap: () =>
+                                      setState(() => selectedSlot = slot),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 18,
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isChosen
+                                          ? const Color(0xFF57E659)
+                                          : const Color(0xFF111827),
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(
+                                        color: isChosen
+                                            ? const Color(0xFF57E659)
+                                            : Colors.white.withOpacity(0.08),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      slot,
+                                      style: GoogleFonts.inter(
+                                        color: isChosen
+                                            ? Colors.black
+                                            : Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: selectedSlot == null
+                                ? null
+                                : () {
+                                    Navigator.pop(sheetContext, {
+                                      'date': selectedDate,
+                                      'slot': selectedSlot!,
+                                    });
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: selectedSlot == null
+                                  ? Colors.white12
+                                  : const Color(0xFF57E659),
+                              foregroundColor: selectedSlot == null
+                                  ? Colors.white54
+                                  : Colors.black,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            child: Text(
+                              'Confirm Slot',
+                              style: GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Select Date',
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 90,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: upcomingDates.length,
-                      itemBuilder: (context, index) {
-                        final date = upcomingDates[index];
-                        final dt = DateTime.parse(date);
-                        final isSelected = selectedDate == date;
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              selectedDate = date;
-                              selectedSlot = null;
-                              availableSlotsFuture = loadAvailableSlots(date);
-                            });
-                          },
-                          child: Container(
-                            width: 88,
-                            margin: EdgeInsets.only(
-                              right: index == upcomingDates.length - 1 ? 0 : 12,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 14,
-                              horizontal: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? const Color(0xFF57E659)
-                                  : const Color(0xFF111827),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: isSelected
-                                    ? const Color(0xFF57E659)
-                                    : Colors.white.withOpacity(0.08),
-                              ),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  DateFormat('E').format(dt),
-                                  style: GoogleFonts.inter(
-                                    color: isSelected
-                                        ? Colors.black
-                                        : Colors.white70,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  DateFormat('d').format(dt),
-                                  style: GoogleFonts.inter(
-                                    color: isSelected
-                                        ? Colors.black
-                                        : Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 22,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  DateFormat('MMM').format(dt),
-                                  style: GoogleFonts.inter(
-                                    color: isSelected
-                                        ? Colors.black
-                                        : Colors.white70,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Available Time Slots',
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  FutureBuilder<List<String>>(
-                    future: availableSlotsFuture,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 20),
-                            child: CircularProgressIndicator(
-                              color: Color(0xFF57E659),
-                            ),
-                          ),
-                        );
-                      }
-                      final slots = snapshot.data ?? [];
-                      if (slots.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Text(
-                            'No available slots for this date.',
-                            style: GoogleFonts.inter(
-                              color: Colors.white54,
-                              fontSize: 14,
-                            ),
-                          ),
-                        );
-                      }
-                      return Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: slots.map((slot) {
-                          final isChosen = slot == selectedSlot;
-                          return GestureDetector(
-                            onTap: () => setState(() => selectedSlot = slot),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 14,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isChosen
-                                    ? const Color(0xFF57E659)
-                                    : const Color(0xFF111827),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: isChosen
-                                      ? const Color(0xFF57E659)
-                                      : Colors.white.withOpacity(0.08),
-                                ),
-                              ),
-                              child: Text(
-                                slot,
-                                style: GoogleFonts.inter(
-                                  color: isChosen ? Colors.black : Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: selectedSlot == null
-                          ? null
-                          : () {
-                              Navigator.pop(sheetContext, {
-                                'date': selectedDate,
-                                'slot': selectedSlot!,
-                              });
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: selectedSlot == null
-                            ? Colors.white12
-                            : const Color(0xFF57E659),
-                        foregroundColor: selectedSlot == null
-                            ? Colors.white54
-                            : Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
-                      child: Text(
-                        'Confirm Slot',
-                        style: GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             );
           },
@@ -1596,6 +1621,12 @@ class DoctorDetailScreen extends StatelessWidget {
                                         );
 
                                     if (response.referenceNumber.isNotEmpty) {
+                                      if (selectedProvider == 'PZW201') {
+                                        // EcoCash prompts can take a moment to arrive.
+                                        await Future.delayed(
+                                          const Duration(seconds: 15),
+                                        );
+                                      }
                                       // In real scenario, we might poll for status here or wait for push notification
                                       if (context.mounted) {
                                         Navigator.pop(context, {
@@ -1642,6 +1673,17 @@ class DoctorDetailScreen extends StatelessWidget {
                                 ),
                         ),
                       ),
+                      if (isPaying && selectedProvider == 'PZW201') ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Waiting for EcoCash prompt… (about 15 seconds)',
+                          style: GoogleFonts.inter(
+                            color: Colors.grey[400],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,

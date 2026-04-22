@@ -38,6 +38,7 @@ dependencies:
   font_awesome_flutter: ^10.6.0
   image_picker: ^1.0.7
   http: ^1.2.2
+  html: ^0.15.6
   path_provider: ^2.1.5
   flutter_dotenv: ^5.2.0
   stts: ^1.2.6
@@ -52,9 +53,12 @@ dependencies:
   geolocator: ^13.0.2
   geocoding: ^3.0.0
   http_parser: ^4.1.2
+  mockito: ^5.6.4
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
 

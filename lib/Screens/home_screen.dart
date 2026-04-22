@@ -17,6 +17,7 @@ import 'package:zimdoctors/services/user_location_service.dart';
 import 'package:zimdoctors/Screens/login_screen.dart';
 import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
 import 'package:zimdoctors/utils/availability_utils.dart';
+import 'package:zimdoctors/utils/date_utils.dart';
 
 class Homescreen extends StatefulWidget {
   static String id = '/home_screen';
@@ -30,7 +31,7 @@ class Homescreen extends StatefulWidget {
 class _HomescreenState extends State<Homescreen> {
   final _auth = FirebaseAuth.instance;
   final _doctorService = DoctorService();
-  final _userLocationService = UserLocationService();
+  final _userLocationService = UserLocationServiceImpl();
   late User loggedInUser;
   String? userPhoto;
   String? localImagePath;
@@ -1507,22 +1508,33 @@ class _HomescreenState extends State<Homescreen> {
         }
 
         final featured = doctors.take(6).toList();
-        return Column(
-          children: featured.map((doctor) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildFeaturedDoctorCard(context, doctor),
-            );
-          }).toList(),
+        return SizedBox(
+          height: 260,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            itemCount: featured.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            itemBuilder: (context, index) => _buildFeaturedDoctorSlideCard(
+              context,
+              featured[index],
+            ),
+          ),
         );
       },
     );
   }
 
-  Widget _buildFeaturedDoctorCard(BuildContext context, Doctor doctor) {
-    final imageProvider = doctor.image.isNotEmpty
-        ? NetworkImage(doctor.image)
-        : null;
+  Widget _buildFeaturedDoctorSlideCard(BuildContext context, Doctor doctor) {
+    final imageProvider =
+        doctor.image.isNotEmpty ? NetworkImage(doctor.image) : null;
+    final upcoming =
+        DateUtilsX.upcomingIsoDates(doctor.availableDates).take(1).toList();
+    final hasSlots = upcoming.isNotEmpty;
+    final nextDateLabel = hasSlots
+        ? DateFormat('dd MMM').format(DateTime.parse(upcoming.first))
+        : 'N/A';
 
     return InkWell(
       onTap: () => Navigator.pushNamed(
@@ -1530,64 +1542,70 @@ class _HomescreenState extends State<Homescreen> {
         DoctorDetailScreen.id,
         arguments: doctor,
       ),
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(24),
       child: Container(
-        width: double.infinity,
+        width: 190,
         decoration: BoxDecoration(
           color: const Color(0xFF151A23),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white.withOpacity(0.06), width: 1),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.white.withOpacity(0.08),
-                  backgroundImage: imageProvider,
-                  child: imageProvider == null
-                      ? const Icon(Icons.person, color: Colors.white70)
-                      : null,
-                ),
-                Positioned(
-                  right: 2,
-                  top: 2,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF57E659),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFF151A23),
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.25),
+              blurRadius: 26,
+              offset: const Offset(0, 14),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    doctor.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    doctor.specialty,
+          ],
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Align(
+              alignment: Alignment.topCenter,
+              child: CircleAvatar(
+                radius: 34,
+                backgroundColor: Colors.white.withOpacity(0.08),
+                backgroundImage: imageProvider,
+                child: imageProvider == null
+                    ? const Icon(Icons.person, color: Colors.white70, size: 34)
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              doctor.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              doctor.specialty,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(
+                color: const Color(0xFF57E659),
+                fontWeight: FontWeight.w800,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  Icons.location_on_outlined,
+                  size: 14,
+                  color: Colors.white.withOpacity(0.55),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    doctor.location,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.inter(
@@ -1596,40 +1614,78 @@ class _HomescreenState extends State<Homescreen> {
                       fontSize: 11,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Row(
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(
+                  Icons.payments_outlined,
+                  size: 14,
+                  color: Color(0xFF57E659),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Fee: \$${doctor.fee}',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFF57E659),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.22),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.star,
-                        size: 14,
-                        color: Color(0xFF57E659),
-                      ),
-                      const SizedBox(width: 4),
                       Text(
-                        doctor.rating.toStringAsFixed(1),
+                        nextDateLabel,
                         style: GoogleFonts.inter(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white,
                           fontWeight: FontWeight.w900,
-                          fontSize: 11,
+                          fontSize: 10,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          doctor.location,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            color: Colors.white.withOpacity(0.55),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 10,
-                          ),
+                      const SizedBox(height: 2),
+                      Text(
+                        hasSlots ? 'Available' : 'No Slots',
+                        style: GoogleFonts.inter(
+                          color: Colors.white.withOpacity(0.65),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 9,
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+                const Spacer(),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  ),
+                  child: const Icon(
+                    Icons.arrow_forward_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

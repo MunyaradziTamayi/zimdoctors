@@ -43,7 +43,7 @@ class UserService {
       final metadata = SettableMetadata(contentType: 'image/jpeg');
       final UploadTask uploadTask = ref.putFile(imageFile, metadata);
       final TaskSnapshot snapshot = await uploadTask;
-      
+
       if (snapshot.state == TaskState.success) {
         return await snapshot.ref.getDownloadURL();
       } else {
@@ -53,5 +53,45 @@ class UserService {
       print('Error uploading user image: $e');
       rethrow;
     }
+  }
+
+  // Register a new user
+  Future<Map<String, dynamic>> registerUser({
+    required String email,
+    required String password,
+    required String name,
+    required String role,
+  }) async {
+    // This would typically use Firebase Auth to create the user
+    // For now, return a mock response
+    return {
+      'id': 'user_${DateTime.now().millisecondsSinceEpoch}',
+      'verified': true,
+    };
+  }
+
+  // Register a new doctor user
+  Future<Map<String, dynamic>> registerDoctorUser({
+    required String email,
+    required String name,
+    required String specialty,
+    required String licenseNumber,
+  }) async {
+    // This would typically use Firebase Auth to create the user
+    // For now, return a mock response
+    return {
+      'id': 'doctor_${DateTime.now().millisecondsSinceEpoch}',
+      'verified': false,
+      'status': 'pending_verification',
+    };
+  }
+
+  // Add doctor to user favorites
+  Future<void> addDoctorToFavorites({
+    required String userId,
+    required String doctorId,
+  }) async {
+    // This would add to user's favorites in Firestore
+    // For now, do nothing
   }
 }

@@ -4,7 +4,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:stts/stts.dart';
+import 'package:zimdoctors/models/booking.dart';
 import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
 import 'package:zimdoctors/services/disease_api_service.dart';
@@ -12,6 +14,7 @@ import 'package:zimdoctors/Screens/doctors_screen.dart';
 import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
 import 'package:zimdoctors/utils/doctor_recommendation_utils.dart';
 import 'package:zimdoctors/models/diagnosis_response.dart';
+import 'package:zimdoctors/services/user_location_service.dart';
 
 class Message {
   final String text;
@@ -56,6 +59,8 @@ class _ChatScreenState extends State<ChatScreen> {
   DiseaseApiService? _diseaseApi;
   String? _diseaseApiInitError;
   final DoctorService _doctorService = DoctorService();
+  final UserLocationService _userLocationService = UserLocationServiceImpl();
+  UserLocation? _userLocation;
 
   bool _isRecording = false;
   bool _isTranscribing = false;
@@ -70,6 +75,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
   final List<Message> _messages = [];
   String? _recommendedSearchQuery;
+  bool _userStartedChat = false;
+
+  String get _currentUserId => loggedInUser?.email ?? 'Anonymous';
+  String get _chatUserKey => loggedInUser?.uid ?? _currentUserId;
+  bool get _hasUserMessage => _messages.any((m) => m.sender == _currentUserId);
+  bool get _shouldShowQuickSuggestions => !_userStartedChat && !_hasUserMessage;
+
+  void _onComposerChanged(String value) {
+    if (_userStartedChat) return;
+    if (value.trim().isEmpty) return;
+    setState(() => _userStartedChat = true);
+  }
 
   @override
   void initState() {
@@ -77,6 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
     getCurrentUser();
     _initDiseaseApi();
     _initSpeech();
+    _loadUserLocation();
 
     _messages.add(
       Message(
@@ -87,6 +105,17 @@ class _ChatScreenState extends State<ChatScreen> {
         timestamp: DateTime.now(),
       ),
     );
+  }
+
+  Future<void> _loadUserLocation() async {
+    try {
+      final location = await _userLocationService.getCurrentLocation();
+      if (!mounted) return;
+      setState(() => _userLocation = location);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _userLocation = null);
+    }
   }
 
   void _initSpeech() {
@@ -199,6 +228,348 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Query<Map<String, dynamic>> _chatHistoryQuery() {
+    return _firestore
+        .collection('messages')
+        .where('userId', isEqualTo: _chatUserKey)
+        .orderBy('timestamp', descending: false);
+  }
+
+  Query<Map<String, dynamic>> _chatHistoryFallbackQuery() {
+    // Best-effort support for older messages that were stored without `userId`.
+    // This only includes patient-sent messages (AI replies can't be reliably
+    // associated without a `userId`).
+    return _firestore
+        .collection('messages')
+        .where('sender', isEqualTo: _currentUserId)
+        .orderBy('timestamp', descending: false);
+  }
+
+  Future<void> _openHistorySheet() async {
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F141D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final user = loggedInUser;
+
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 12,
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+            ),
+            child: DefaultTabController(
+              length: 2,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 56,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'History',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TabBar(
+                    labelColor: const Color(0xFF57E659),
+                    unselectedLabelColor: Colors.white70,
+                    indicatorColor: const Color(0xFF57E659),
+                    labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                    tabs: const [
+                      Tab(text: 'Chats'),
+                      Tab(text: 'Appointments'),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(sheetContext).size.height * 0.75,
+                    ),
+                    child: TabBarView(
+                      children: [
+                        _buildChatHistoryTab(),
+                        if (user == null)
+                          Center(
+                            child: Text(
+                              'Login to view your appointment history.',
+                              style: GoogleFonts.inter(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          )
+                        else
+                          StreamBuilder<List<Booking>>(
+                            stream: _doctorService.getBookingsForPatient(
+                              user.uid,
+                            ),
+                            builder: (context, snapshot) {
+                              final items = snapshot.data ?? const <Booking>[];
+                              if (snapshot.connectionState ==
+                                      ConnectionState.waiting &&
+                                  items.isEmpty) {
+                                return const Center(
+                                  child: SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Color(0xFF57E659),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              if (items.isEmpty) {
+                                return Center(
+                                  child: Text(
+                                    'No booked appointments yet.',
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white70,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              return ListView.separated(
+                                physics: const BouncingScrollPhysics(),
+                                itemCount: items.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) {
+                                  final b = items[index];
+                                  final when = '${b.date} • ${b.time}';
+                                  return Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF111827),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.06),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 36,
+                                          height: 36,
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withOpacity(0.25),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            border: Border.all(
+                                              color:
+                                                  Colors.white.withOpacity(0.06),
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.calendar_month,
+                                            size: 18,
+                                            color: Color(0xFF57E659),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                when,
+                                                style: GoogleFonts.inter(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Status: ${b.status} • Payment: ${b.paymentStatus}',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: GoogleFonts.inter(
+                                                  color: Colors.white70,
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildChatHistoryTab() {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _chatHistoryQuery().snapshots(),
+      builder: (context, snapshot) {
+        final docs = snapshot.data?.docs ?? const [];
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            docs.isEmpty) {
+          return const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Color(0xFF57E659),
+              ),
+            ),
+          );
+        }
+
+        if (docs.isEmpty) {
+          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _chatHistoryFallbackQuery().snapshots(),
+            builder: (context, fallbackSnap) {
+              final fbDocs = fallbackSnap.data?.docs ?? const [];
+              if (fallbackSnap.connectionState == ConnectionState.waiting &&
+                  fbDocs.isEmpty) {
+                return Center(
+                  child: Text(
+                    'No saved chat history yet.',
+                    style: GoogleFonts.inter(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                );
+              }
+
+              if (fbDocs.isEmpty) {
+                return Center(
+                  child: Text(
+                    'No saved chat history yet.',
+                    style: GoogleFonts.inter(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                );
+              }
+
+              return _buildHistoryList(fbDocs);
+            },
+          );
+        }
+
+        return _buildHistoryList(docs);
+      },
+    );
+  }
+
+  Widget _buildHistoryList(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    return ListView.separated(
+      physics: const BouncingScrollPhysics(),
+      itemCount: docs.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final data = docs[index].data();
+        final text = (data['text'] ?? '').toString();
+        final sender = (data['sender'] ?? '').toString();
+        final ts = data['timestamp'];
+        DateTime? when;
+        if (ts is Timestamp) when = ts.toDate();
+        if (ts is DateTime) when = ts;
+
+        final timeLabel = when == null
+            ? ''
+            : DateFormat('dd MMM, HH:mm').format(when.toLocal());
+
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111827),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    sender == 'AI' ? 'AI' : 'You',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFF57E659),
+                      fontWeight: FontWeight.w900,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      timeLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        color: Colors.white54,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                text,
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _sendMessage() async {
     if (_isAwaitingAi) return;
     if (_controller.text.trim().isEmpty) return;
@@ -208,7 +579,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (_selectedLanguage == null) return;
     }
 
-    final userEmail = loggedInUser?.email ?? 'Anonymous';
+    final userEmail = _currentUserId;
     final text = _controller.text.trim();
 
     final userMessage = Message(
@@ -218,11 +589,14 @@ class _ChatScreenState extends State<ChatScreen> {
     );
 
     setState(() {
+      _userStartedChat = true;
       _messages.add(userMessage);
       _firestore.collection('messages').add({
         'text': userMessage.text,
         'sender': userMessage.sender,
         'timestamp': userMessage.timestamp,
+        'userId': _chatUserKey,
+        'mode': widget.recommendDoctor ? 'doctor_match' : 'assistant',
       });
 
       _controller.clear();
@@ -271,32 +645,47 @@ class _ChatScreenState extends State<ChatScreen> {
       String inferredSpecialist;
       String inferredUrgency;
 
+      dynamic reply;
       if (widget.recommendDoctor) {
-        // Use doctor prediction endpoint directly
-        final doctorPrediction = await diseaseApi.predictDoctor(text);
-        inferredSpecialist =
-            doctorPrediction['specialty'] ?? 'General Practitioner';
-        inferredUrgency = doctorPrediction['urgency'] ?? 'Medium';
-        displayReply =
-            'Specialist: $inferredSpecialist\nUrgency: $inferredUrgency';
+        // Use the model used in doctor matching (recommend)
+        reply = await diseaseApi.recommendDoctor(text);
       } else {
-        // Use regular reply for disease diagnosis
-        final reply = await diseaseApi.reply(text);
-        if (!mounted) return;
+        // For AI Assistant, use /predict/text for full disease info
+        reply = await diseaseApi.predictFromText(text);
+      }
 
-        if (reply is DiagnosisResponse) {
-          displayReply = reply.displayString;
+      if (!mounted) return;
+
+      List<String>? preferredIds;
+      if (reply is DiagnosisResponse) {
+        displayReply = reply.displayString;
+
+        // For AI Assistant (not Doctor Match), add doctor recommendation below
+        if (!widget.recommendDoctor) {
+          try {
+            final doctorRec = await diseaseApi.recommendDoctor(text);
+            displayReply +=
+                '\n\n---\n\n📋 Recommended Specialist: ${doctorRec.predictedDisease}';
+            inferredSpecialist = doctorRec.predictedDisease;
+          } catch (e) {
+            inferredSpecialist =
+                reply.suggestedSpecialist ??
+                DoctorRecommendationUtils.inferSearchQuery(reply.displayString);
+          }
+        } else {
           inferredSpecialist =
               reply.suggestedSpecialist ??
               DoctorRecommendationUtils.inferSearchQuery(reply.displayString);
-          inferredUrgency = '';
-        } else {
-          displayReply = reply.toString();
-          inferredSpecialist = DoctorRecommendationUtils.inferSearchQuery(
-            reply.toString(),
-          );
-          inferredUrgency = '';
         }
+
+        inferredUrgency = reply.severity.isNotEmpty ? reply.severity : 'Medium';
+        preferredIds = reply.recommendedDoctors;
+      } else {
+        displayReply = reply.toString();
+        inferredSpecialist = DoctorRecommendationUtils.inferSearchQuery(
+          reply.toString(),
+        );
+        inferredUrgency = 'Low';
       }
 
       setState(() {
@@ -305,36 +694,39 @@ class _ChatScreenState extends State<ChatScreen> {
           sender: 'AI',
           timestamp: DateTime.now(),
         );
-        if (widget.recommendDoctor) {
-          _recommendedSearchQuery = inferredSpecialist;
-          _recommendedSpecialty = inferredSpecialist;
-          _recommendedUrgency = inferredUrgency;
-          // Add recommendation message below the AI response
-          _messages.add(
-            Message(
-              text: 'RECOMMENDATION',
-              sender: 'AI',
-              timestamp: DateTime.now(),
-              isRecommendation: true,
-            ),
-          );
-          // Hide the CTA after 30 seconds
-          Future.delayed(const Duration(seconds: 30), () {
-            if (mounted) {
-              setState(() => _recommendedSearchQuery = null);
-            }
-          });
-        }
+        _recommendedSearchQuery = inferredSpecialist;
+        _recommendedSpecialty = inferredSpecialist;
+        _recommendedUrgency = inferredUrgency;
+
+        _messages.removeWhere((m) => m.isRecommendation);
+        _messages.add(
+          Message(
+            text: 'RECOMMENDATION',
+            sender: 'AI',
+            timestamp: DateTime.now(),
+            isRecommendation: true,
+          ),
+        );
+
+        // Hide the CTA after 30 seconds
+        Future.delayed(const Duration(seconds: 20), () {
+          if (mounted) {
+            setState(() => _recommendedSearchQuery = null);
+          }
+        });
         _firestore.collection('messages').add({
           'text': displayReply,
           'sender': 'AI',
           'timestamp': DateTime.now(),
+          'userId': _chatUserKey,
+          'mode': widget.recommendDoctor ? 'doctor_match' : 'assistant',
         });
       });
 
-      if (widget.recommendDoctor) {
-        await _loadDoctorRecommendations(inferredSpecialist);
-      }
+      await _loadDoctorRecommendations(
+        inferredSpecialist,
+        preferredIds: preferredIds,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -363,11 +755,16 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _loadDoctorRecommendations(String specialist) async {
+  Future<void> _loadDoctorRecommendations(
+    String specialist, {
+    List<String>? preferredIds,
+  }) async {
     final resolvedSpecialty = specialist.trim().isEmpty
         ? 'General Practitioner'
         : specialist.trim();
-    final urgency = _recommendedUrgency ?? 'Unknown';
+    final urgency = (_recommendedUrgency?.trim().isNotEmpty ?? false)
+        ? _recommendedUrgency!.trim()
+        : 'Unknown';
 
     if (!mounted) return;
     setState(() {
@@ -378,8 +775,10 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     try {
-      final doctors = await _doctorService.findDoctorsBySpecialty(
-        resolvedSpecialty,
+      final doctors = await _doctorService.recommendDoctors(
+        specialty: resolvedSpecialty,
+        userLocation: _userLocation,
+        preferredDoctorIds: preferredIds,
       );
       if (!mounted) return;
       setState(() {
@@ -395,11 +794,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildDoctorRecommendationPanel() {
-    if (!widget.recommendDoctor || _recommendedSpecialty == null) {
+    if (_recommendedSpecialty == null) {
       return const SizedBox.shrink();
     }
-
-    final doctors = _recommendedDoctors;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -454,7 +851,7 @@ class _ChatScreenState extends State<ChatScreen> {
             )
           else if (_recommendedDoctors!.isEmpty)
             Text(
-              'No doctors found for this specialty. Tap search to browse all doctors.',
+              'No available doctors found for this specialty right now. Tap search to browse all doctors.',
               style: GoogleFonts.inter(
                 color: Colors.white.withAlpha(200),
                 fontSize: 12,
@@ -921,6 +1318,11 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: _openLanguagePicker,
             icon: const Icon(Icons.translate, color: Colors.white),
           ),
+          IconButton(
+            tooltip: 'History',
+            onPressed: _openHistorySheet,
+            icon: const Icon(Icons.history, color: Colors.white),
+          ),
         ],
       ),
       body: Column(
@@ -952,8 +1354,8 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           _buildLanguageBanner(),
-          if (widget.recommendDoctor) _buildRecommendationCta(),
-          _buildQuickSuggestions(),
+          _buildRecommendationCta(),
+          if (_shouldShowQuickSuggestions) _buildQuickSuggestions(),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -1176,6 +1578,7 @@ class _ChatScreenState extends State<ChatScreen> {
         color: Colors.black, // Match background
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
             child: Container(
@@ -1186,6 +1589,9 @@ class _ChatScreenState extends State<ChatScreen> {
               child: TextField(
                 controller: _controller,
                 style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.multiline,
+                minLines: 1,
+                maxLines: 6,
                 decoration: InputDecoration(
                   hintText: (_selectedLanguage ?? 'english') == 'shona'
                       ? 'Nyora meseji...'
@@ -1197,6 +1603,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     vertical: 14,
                   ),
                 ),
+                onChanged: _onComposerChanged,
                 onSubmitted: (_) => _sendMessage(),
               ),
             ),

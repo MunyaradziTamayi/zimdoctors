@@ -53,11 +53,18 @@ class UserLocation {
   }
 }
 
-class UserLocationService {
+abstract class UserLocationService {
+  Future<UserLocation> getCurrentLocation();
+}
+
+class UserLocationServiceImpl implements UserLocationService {
+  @override
   Future<UserLocation> getCurrentLocation() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      throw const UserLocationFailure(UserLocationFailureReason.serviceDisabled);
+      throw const UserLocationFailure(
+        UserLocationFailureReason.serviceDisabled,
+      );
     }
 
     var permission = await Geolocator.checkPermission();
@@ -66,7 +73,9 @@ class UserLocationService {
     }
 
     if (permission == LocationPermission.denied) {
-      throw const UserLocationFailure(UserLocationFailureReason.permissionDenied);
+      throw const UserLocationFailure(
+        UserLocationFailureReason.permissionDenied,
+      );
     }
 
     if (permission == LocationPermission.deniedForever) {
@@ -91,7 +100,8 @@ class UserLocationService {
       );
       final place = placemarks.isNotEmpty ? placemarks.first : null;
       locality = place?.locality ?? place?.subAdministrativeArea;
-      subLocality = place?.subLocality ??
+      subLocality =
+          place?.subLocality ??
           place?.thoroughfare ??
           place?.subThoroughfare ??
           place?.name;

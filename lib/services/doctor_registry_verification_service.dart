@@ -136,7 +136,7 @@ class DoctorRegistryVerificationService {
 
     final tokens = username
         .toLowerCase()
-        .split(RegExp(r'\\s+'))
+        .split(RegExp(r'\s+'))
         .map((t) => t.trim())
         .where((t) => t.length >= 2)
         .toList();

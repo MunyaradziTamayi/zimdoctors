@@ -43,24 +43,37 @@ class _WelcomescreenState extends State<Welcomescreen>
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentPage = index;
-                  });
-                },
-                children: [_buildPage1(), _buildPage2(), _buildPage3()],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final pageHeight = (constraints.maxHeight - 200).clamp(320.0, 700.0);
+
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: pageHeight,
+                      child: PageView(
+                        controller: _pageController,
+                        onPageChanged: (index) {
+                          setState(() {
+                            _currentPage = index;
+                          });
+                        },
+                        children: [_buildPage1(), _buildPage2(), _buildPage3()],
+                      ),
+                    ),
+                    _buildPageIndicators(),
+                    const SizedBox(height: 40),
+                    _buildButtons(),
+                    const SizedBox(height: 40),
+                  ],
+                ),
               ),
-            ),
-            _buildPageIndicators(),
-            const SizedBox(height: 40),
-            _buildButtons(),
-            const SizedBox(height: 40),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -69,51 +82,57 @@ class _WelcomescreenState extends State<Welcomescreen>
   Widget _buildPage1() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Spacer(),
-          _buildAnimatedIcon(
-            icon: Icons.medical_services,
-            gradientColors: [const Color(0xFF8B5CF6), const Color(0xFFEC4899)],
+      child: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildAnimatedIcon(
+                icon: Icons.medical_services,
+                gradientColors: [
+                  const Color(0xFF8B5CF6),
+                  const Color(0xFFEC4899),
+                ],
+              ),
+              const SizedBox(height: 32),
+              _buildBadge('AI-Powered Healthcare'),
+              const SizedBox(height: 24),
+              Text(
+                'Effortless Healthcare',
+                style: GoogleFonts.inter(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'with Zim Doctors',
+                style: GoogleFonts.inter(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withOpacity(0.8),
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Transforming the way you access medical care through innovative technology',
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.grey[400],
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+            ],
           ),
-          const SizedBox(height: 32),
-          _buildBadge('AI-Powered Healthcare'),
-          const SizedBox(height: 24),
-          Text(
-            'Effortless Healthcare',
-            style: GoogleFonts.inter(
-              fontSize: 36,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              height: 1.2,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'with Zim Doctors',
-            style: GoogleFonts.inter(
-              fontSize: 32,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withOpacity(0.8),
-              height: 1.2,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Transforming the way you access medical care through innovative technology',
-            style: GoogleFonts.inter(
-              fontSize: 16,
-              fontWeight: FontWeight.w400,
-              color: Colors.grey[400],
-              height: 1.5,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const Spacer(),
-        ],
+        ),
       ),
     );
   }
@@ -121,51 +140,57 @@ class _WelcomescreenState extends State<Welcomescreen>
   Widget _buildPage2() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Spacer(),
-          _buildAnimatedIcon(
-            icon: Icons.calendar_today_rounded,
-            gradientColors: [const Color(0xFF57E659), const Color(0xFF00D9FF)],
+      child: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildAnimatedIcon(
+                icon: Icons.calendar_today_rounded,
+                gradientColors: [
+                  const Color(0xFF57E659),
+                  const Color(0xFF00D9FF),
+                ],
+              ),
+              const SizedBox(height: 32),
+              _buildBadge('Instant Booking'),
+              const SizedBox(height: 24),
+              Text(
+                'Book Appointments',
+                style: GoogleFonts.inter(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Instantly',
+                style: GoogleFonts.inter(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withOpacity(0.8),
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Connect with verified doctors in seconds. Schedule, reschedule, or cancel appointments with ease.',
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.grey[400],
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+            ],
           ),
-          const SizedBox(height: 32),
-          _buildBadge('Instant Booking'),
-          const SizedBox(height: 24),
-          Text(
-            'Book Appointments',
-            style: GoogleFonts.inter(
-              fontSize: 36,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              height: 1.2,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Instantly',
-            style: GoogleFonts.inter(
-              fontSize: 32,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withOpacity(0.8),
-              height: 1.2,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Connect with verified doctors in seconds. Schedule, reschedule, or cancel appointments with ease.',
-            style: GoogleFonts.inter(
-              fontSize: 16,
-              fontWeight: FontWeight.w400,
-              color: Colors.grey[400],
-              height: 1.5,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const Spacer(),
-        ],
+        ),
       ),
     );
   }
@@ -173,51 +198,57 @@ class _WelcomescreenState extends State<Welcomescreen>
   Widget _buildPage3() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Spacer(),
-          _buildAnimatedIcon(
-            icon: Icons.security_rounded,
-            gradientColors: [const Color(0xFFFFB800), const Color(0xFFFF6B00)],
+      child: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildAnimatedIcon(
+                icon: Icons.security_rounded,
+                gradientColors: [
+                  const Color(0xFFFFB800),
+                  const Color(0xFFFF6B00),
+                ],
+              ),
+              const SizedBox(height: 32),
+              _buildBadge('Enterprise Security'),
+              const SizedBox(height: 24),
+              Text(
+                'Your Health,',
+                style: GoogleFonts.inter(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Secured',
+                style: GoogleFonts.inter(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withOpacity(0.8),
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Bank-level encryption and HIPAA compliance ensure your medical data stays private and protected.',
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.grey[400],
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+            ],
           ),
-          const SizedBox(height: 32),
-          _buildBadge('Enterprise Security'),
-          const SizedBox(height: 24),
-          Text(
-            'Your Health,',
-            style: GoogleFonts.inter(
-              fontSize: 36,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              height: 1.2,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Secured',
-            style: GoogleFonts.inter(
-              fontSize: 32,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withOpacity(0.8),
-              height: 1.2,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Bank-level encryption and HIPAA compliance ensure your medical data stays private and protected.',
-            style: GoogleFonts.inter(
-              fontSize: 16,
-              fontWeight: FontWeight.w400,
-              color: Colors.grey[400],
-              height: 1.5,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const Spacer(),
-        ],
+        ),
       ),
     );
   }

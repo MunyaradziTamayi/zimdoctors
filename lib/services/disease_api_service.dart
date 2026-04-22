@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:zimdoctors/models/diagnosis_response.dart';
+import 'package:zimdoctors/services/backend_config.dart';
 
 class DiseaseApiService {
   DiseaseApiService({required Uri baseUrl, http.Client? client})
@@ -11,28 +11,10 @@ class DiseaseApiService {
       _client = client ?? http.Client();
 
   factory DiseaseApiService.fromEnv({http.Client? client}) {
-    String? baseUrl;
-    try {
-      baseUrl = dotenv.env['DISEASE_API_BASE_URL']?.trim();
-    } on NotInitializedError {
-      baseUrl = null;
-    }
-
-    if (baseUrl != null &&
-        baseUrl.length >= 2 &&
-        ((baseUrl.startsWith('"') && baseUrl.endsWith('"')) ||
-            (baseUrl.startsWith("'") && baseUrl.endsWith("'")))) {
-      baseUrl = baseUrl.substring(1, baseUrl.length - 1).trim();
-    }
-
-    final fallback = Platform.isAndroid
-        ? 'http://10.0.2.2:8000'
-        : 'http://localhost:8000';
-
-    final chosen = (baseUrl == null || baseUrl.isEmpty) ? fallback : baseUrl;
-    final uri = _normalizeBaseUriForPlatform(Uri.parse(_ensureScheme(chosen)));
-
-    return DiseaseApiService(baseUrl: uri, client: client);
+    return DiseaseApiService(
+      baseUrl: BackendConfig.diseaseApiBaseUri(),
+      client: client,
+    );
   }
 
   final Uri _baseUrl;
@@ -40,23 +22,6 @@ class DiseaseApiService {
 
   String? _sessionId;
   String? _language;
-
-  static String _ensureScheme(String input) {
-    final trimmed = input.trim();
-    if (trimmed.isEmpty) return trimmed;
-    if (trimmed.contains('://')) return trimmed;
-    return 'http://$trimmed';
-  }
-
-  static Uri _normalizeBaseUriForPlatform(Uri uri) {
-    if (!Platform.isAndroid) return uri;
-    final host = uri.host.toLowerCase();
-    if (host != 'localhost' && host != '127.0.0.1' && host != '::1') {
-      return uri;
-    }
-    // On Android emulators, "localhost" points at the emulator/device itself.
-    return uri.replace(host: '10.0.2.2');
-  }
 
   Uri _endpointUri(String endpointPath) {
     final basePath = _baseUrl.path;
@@ -69,13 +34,37 @@ class DiseaseApiService {
 
   Future<void> startSession(String language) async {
     final uri = _endpointUri('session/start');
-    final response = await _client
-        .post(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'language': language}),
-        )
-        .timeout(const Duration(seconds: 10));
+    late http.Response response;
+    try {
+      response = await _client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'language': language}),
+          )
+          .timeout(const Duration(seconds: 10));
+    } on SocketException catch (e) {
+      throw SocketException(
+        'Failed to reach Disease API at $_baseUrl (SocketException: ${e.message}). '
+        'Check that the backend is reachable and that DISEASE_API_BASE_URL is set correctly '
+        '(default: https://lunchbox-blabber-unworn.ngrok-free.dev).',
+        osError: e.osError,
+        address: e.address,
+        port: e.port,
+      );
+    } on HttpException catch (e) {
+      throw HttpException(
+        'Failed to reach Disease API at $_baseUrl: ${e.message}',
+      );
+    } on FormatException catch (e) {
+      throw FormatException(
+        'Failed to reach Disease API at $_baseUrl: ${e.message}',
+        e.source,
+        e.offset,
+      );
+    } on Exception catch (e) {
+      throw Exception('Failed to reach Disease API at $_baseUrl: $e');
+    }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException(
@@ -136,7 +125,7 @@ class DiseaseApiService {
       if (!_looksLikeUnknownAnswer(answer)) {
         return answer;
       }
-      final fallbackDiagnosis = await predictFromText(question);
+      final fallbackDiagnosis = await recommendDoctor(question);
       if (!_looksLikeUnknownDiagnosis(fallbackDiagnosis)) {
         return fallbackDiagnosis;
       }
@@ -144,10 +133,10 @@ class DiseaseApiService {
     } catch (e) {
       askError = e;
       try {
-        return await predictFromText(question);
+        return await recommendDoctor(question);
       } catch (predictError) {
         throw Exception(
-          'Both /ask and /predict/text failed. ask: $askError; predict: $predictError',
+          'Both /ask and /recommend failed. ask: $askError; recommend: $predictError',
         );
       }
     }
@@ -156,7 +145,7 @@ class DiseaseApiService {
   Future<dynamic> _predictThenAskFallback(String text) async {
     late Object predictError;
     try {
-      final diagnosis = await predictFromText(text);
+      final diagnosis = await recommendDoctor(text);
       if (!_looksLikeUnknownDiagnosis(diagnosis)) {
         return diagnosis;
       }
@@ -171,7 +160,7 @@ class DiseaseApiService {
         return await ask(text);
       } catch (askError) {
         throw Exception(
-          'Both /predict/text and /ask failed. predict: $predictError; ask: $askError',
+          'Both /recommend and /ask failed. recommend: $predictError; ask: $askError',
         );
       }
     }
@@ -194,6 +183,9 @@ class DiseaseApiService {
       'unknown',
       'sorry',
       'can\'t answer',
+      'didn\'t recognise',
+      'didn\'t recognize',
+      'try asking about',
     ];
     return unknownPatterns.any(normalized.contains);
   }
@@ -205,10 +197,12 @@ class DiseaseApiService {
     }
     if (predicted.contains('unknown') ||
         predicted.contains('not sure') ||
-        predicted.contains('cannot determine')) {
+        predicted.contains('cannot determine') ||
+        predicted.contains('unable to make a confident prediction')) {
       return true;
     }
-    if (response.confidence < 10.0) {
+    // If it's a generic info request and confidence is low, it might be unknown
+    if (predicted == 'information request' && response.confidence < 1.0) {
       return true;
     }
     return false;
@@ -220,7 +214,11 @@ class DiseaseApiService {
         .post(
           uri,
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'question': question, 'session_id': _sessionId}),
+          body: jsonEncode({
+            'question': question,
+            'session_id': _sessionId,
+            'language': _language,
+          }),
         )
         .timeout(const Duration(seconds: 30));
 
@@ -243,13 +241,45 @@ class DiseaseApiService {
     return answer.trim();
   }
 
+  Future<DiagnosisResponse> recommendDoctor(String text) async {
+    final uri = _endpointUri('recommend');
+    final response = await _client
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'text': text,
+            'session_id': _sessionId,
+            'language': _language,
+          }),
+        )
+        .timeout(const Duration(seconds: 45));
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException(
+        'Backend /recommend failed (${response.statusCode}): ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Unexpected /recommend response shape');
+    }
+
+    return DiagnosisResponse.fromJson(data);
+  }
+
   Future<DiagnosisResponse> predictFromText(String text) async {
     final uri = _endpointUri('predict/text');
     final response = await _client
         .post(
           uri,
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'text': text, 'session_id': _sessionId}),
+          body: jsonEncode({
+            'text': text,
+            'session_id': _sessionId,
+            'language': _language,
+          }),
         )
         .timeout(const Duration(seconds: 45));
 
@@ -265,24 +295,5 @@ class DiseaseApiService {
     }
 
     return DiagnosisResponse.fromJson(data);
-  }
-
-  Future<Map<String, dynamic>> predictDoctor(String text) async {
-    final uri = _endpointUri('predict/doctor');
-    final response = await _client
-        .post(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'text': text, 'session_id': _sessionId}),
-        )
-        .timeout(const Duration(seconds: 30));
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw HttpException(
-        'Backend /predict/doctor failed (${response.statusCode}): ${response.body}',
-      );
-    }
-
-    return jsonDecode(response.body);
   }
 }

@@ -7,7 +7,9 @@ import 'package:zimdoctors/models/booking.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:zimdoctors/services/notification_service.dart';
 import 'package:zimdoctors/services/disease_api_service.dart';
-import 'package:zimdoctors/utils/doctor_recommendation_utils.dart';
+import 'package:zimdoctors/services/user_location_service.dart';
+import 'package:zimdoctors/utils/availability_utils.dart';
+import 'package:zimdoctors/utils/location_match_utils.dart';
 
 class DoctorService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -76,13 +78,50 @@ class DoctorService {
     }
   }
 
+  Future<List<Doctor>> getDoctorsByIds(List<String> ids) async {
+    try {
+      if (ids.isEmpty) return [];
+      
+      // Firestore 'in' query supports up to 10 items
+      final chunks = <List<String>>[];
+      for (var i = 0; i < ids.length; i += 10) {
+        chunks.add(ids.sublist(i, i + 10 > ids.length ? ids.length : i + 10));
+      }
+
+      final List<Doctor> doctors = [];
+      for (final chunk in chunks) {
+        final querySnapshot = await _firestore
+            .collection(_collectionName)
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        doctors.addAll(
+          querySnapshot.docs.map(
+            (doc) => Doctor.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+          ),
+        );
+      }
+      return doctors;
+    } catch (e) {
+      print('Error getting doctors by ids: $e');
+      return [];
+    }
+  }
+
   Future<DoctorRecommendation> matchDoctorRecommendation(
     String symptoms,
   ) async {
-    final doctorPrediction = await _apiService.predictDoctor(symptoms);
-    final specialist = doctorPrediction['specialty'] ?? 'General Practitioner';
-    final urgency = doctorPrediction['urgency'] ?? 'Medium';
-    final doctors = await findDoctorsBySpecialty(specialist);
+    final diagnosis = await _apiService.recommendDoctor(symptoms);
+    final specialist = diagnosis.suggestedSpecialist ?? 'General Practitioner';
+    final urgency = diagnosis.severity.isNotEmpty ? diagnosis.severity : 'Medium';
+    
+    // First try to load recommended doctors by their IDs if the API provided them
+    List<Doctor> doctors = [];
+    if (diagnosis.recommendedDoctors.isNotEmpty) {
+      doctors = await getDoctorsByIds(diagnosis.recommendedDoctors);
+    } else {
+      // ONLY fallback to specialty search if NO specific IDs were recommended
+      doctors = await findDoctorsBySpecialty(specialist);
+    }
 
     return DoctorRecommendation(
       specialty: specialist.trim().isEmpty
@@ -91,6 +130,61 @@ class DoctorService {
       urgency: urgency,
       doctors: doctors,
     );
+  }
+
+  Future<List<Doctor>> recommendDoctors({
+    required String specialty,
+    UserLocation? userLocation,
+    DateTime? now,
+    List<String>? preferredDoctorIds,
+  }) async {
+    final resolvedSpecialty = specialty.trim().isEmpty
+        ? 'General Practitioner'
+        : specialty.trim();
+
+    List<Doctor> doctors = [];
+    if (preferredDoctorIds != null && preferredDoctorIds.isNotEmpty) {
+      // ONLY show the preferred doctors recommended by the AI
+      doctors = await getDoctorsByIds(preferredDoctorIds);
+    } else {
+      // Fallback to specialty search ONLY if no preferred IDs are provided
+      doctors = await findDoctorsBySpecialty(resolvedSpecialty);
+    }
+
+    final nowLocal = now ?? DateTime.now();
+    final withNext = <({Doctor doctor, DateTime next})>[];
+    for (final doctor in doctors) {
+      final earliest = AvailabilityUtilsX.earliestUpcomingSlot(
+        availableDates: doctor.availableDates,
+        availabilitySlots: doctor.availabilitySlots,
+        now: nowLocal,
+      );
+      if (earliest == null) continue;
+      withNext.add((doctor: doctor, next: earliest));
+    }
+
+    if (withNext.isEmpty) return [];
+
+    List<({Doctor doctor, DateTime next})> candidates = withNext;
+    if (userLocation != null) {
+      final local = withNext.where((entry) {
+        final text = '${entry.doctor.location} ${entry.doctor.surgeryLocation}';
+        return LocationMatchUtils.matchesUserLocation(
+          doctorLocationText: text,
+          userLocation: userLocation,
+        );
+      }).toList();
+
+      if (local.isNotEmpty) candidates = local;
+    }
+
+    candidates.sort((a, b) {
+      final byTime = a.next.compareTo(b.next);
+      if (byTime != 0) return byTime;
+      return b.doctor.rating.compareTo(a.doctor.rating);
+    });
+
+    return candidates.map((e) => e.doctor).toList();
   }
 
   Future<String> uploadProfileImage(File imageFile, String userId) async {
@@ -310,6 +404,21 @@ class DoctorService {
         });
   }
 
+  Stream<List<Booking>> getBookingsForPatient(String patientId) {
+    return _firestore
+        .collection('bookings')
+        .where('patientId', isEqualTo: patientId)
+        .snapshots()
+        .map((snapshot) {
+          final bookings = snapshot.docs.map((doc) {
+            return Booking.fromMap(doc.data(), doc.id);
+          }).toList();
+
+          bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return bookings;
+        });
+  }
+
   Future<Doctor?> getCurrentDoctor() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
@@ -334,12 +443,11 @@ class DoctorService {
     }
   }
 
-  /// AI-Powered Doctor Match
-  /// Uses symptoms to find the best specialist and returns matching doctors from Firestore.
+ 
   Future<List<Doctor>> findDoctorMatch(String symptoms) async {
     try {
       // 1. Get specialist recommendation from AI
-      final diagnosis = await _apiService.predictFromText(symptoms);
+      final diagnosis = await _apiService.recommendDoctor(symptoms);
       final specialist = diagnosis.suggestedSpecialist;
 
       if (specialist == null || specialist == 'General Practitioner') {

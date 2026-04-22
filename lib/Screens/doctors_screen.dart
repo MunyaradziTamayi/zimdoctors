@@ -6,6 +6,7 @@ import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
 import 'package:zimdoctors/services/user_location_service.dart';
 import 'package:intl/intl.dart';
 import 'package:zimdoctors/utils/availability_utils.dart';
+import 'package:zimdoctors/Screens/ai_chat_screen.dart';
 
 class DoctorsScreen extends StatefulWidget {
   static const String id = '/doctors_screen';
@@ -24,7 +25,7 @@ class DoctorsScreen extends StatefulWidget {
 
 class _DoctorsScreenState extends State<DoctorsScreen> {
   final DoctorService _doctorService = DoctorService();
-  final UserLocationService _userLocationService = UserLocationService();
+  final UserLocationService _userLocationService = UserLocationServiceImpl();
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   UserLocation? _userLocation;
@@ -608,6 +609,25 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
             ],
           );
         },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ChatScreen(recommendDoctor: true),
+            ),
+          );
+        },
+        backgroundColor: const Color(0xFF57E659),
+        icon: const Icon(Icons.smart_toy, color: Colors.black),
+        label: Text(
+          'AI Doctor Match',
+          style: GoogleFonts.inter(
+            color: Colors.black,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }

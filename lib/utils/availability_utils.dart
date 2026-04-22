@@ -7,7 +7,10 @@ class AvailabilityUtilsX {
     DateTime? now,
   }) {
     final nowLocal = now ?? DateTime.now();
-    final upcomingDates = DateUtilsX.upcomingIsoDates(availableDates, now: nowLocal);
+
+    final dateSource =
+        availableDates.isNotEmpty ? availableDates : availabilitySlots.keys;
+    final upcomingDates = DateUtilsX.upcomingIsoDates(dateSource, now: nowLocal);
 
     DateTime? earliest;
     for (final isoDate in upcomingDates) {

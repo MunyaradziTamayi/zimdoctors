@@ -20,6 +20,9 @@ class DiagnosisResponse {
   final Map<String, dynamic>? extractedSymptoms;
   final String? translatedText;
 
+  // For simplified doctor match response
+  final String? symptom;
+
   DiagnosisResponse({
     required this.predictedDisease,
     required this.confidence,
@@ -41,11 +44,13 @@ class DiagnosisResponse {
     this.specialistMatchMethod,
     this.extractedSymptoms,
     this.translatedText,
+    this.symptom,
   });
 
   factory DiagnosisResponse.fromJson(Map<String, dynamic> json) {
     return DiagnosisResponse(
-      predictedDisease: json['predicted_disease'] ?? 'Unknown',
+      predictedDisease:
+          json['predicted_disease'] ?? json['specialty'] ?? 'Unknown',
       confidence: (json['confidence'] ?? 0.0).toDouble(),
       severity: json['severity'] ?? 'unknown',
       advice: json['advice'] ?? '',
@@ -69,16 +74,27 @@ class DiagnosisResponse {
       specialistMatchMethod: json['specialist_match_method'],
       extractedSymptoms: json['extracted_symptoms'],
       translatedText: json['translated_text'],
+      symptom: json['symptom'],
     );
   }
 
   String get displayString {
     final buffer = StringBuffer();
-    buffer.writeln('Likely condition: $predictedDisease (${confidence.toStringAsFixed(1)}%)');
+
+    // For simplified doctor match response (symptom + specialty only)
+    if (symptom != null &&
+        suggestedSpecialist == null &&
+        emergencyAlert == null) {
+      buffer.writeln('Symptom: $symptom');
+      buffer.writeln('Recommended Specialist: $predictedDisease');
+      return buffer.toString().trim();
+    }
+
+    buffer.writeln('Likely condition: $predictedDisease');
     buffer.writeln('Severity: $severity');
     buffer.writeln('Typical duration: $duration');
     buffer.writeln('Contagious: ${contagious ? 'Yes' : 'No'}');
-    
+
     if (emergencyAlert != null) {
       buffer.writeln();
       buffer.writeln('⚠️ $emergencyAlert');
@@ -94,11 +110,43 @@ class DiagnosisResponse {
       buffer.writeln('Advice: $advice');
     }
 
+    if (treatment.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Treatment:');
+      for (var t in treatment) {
+        buffer.writeln('  • $t');
+      }
+    }
+
+    if (prevention.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Prevention:');
+      for (var p in prevention) {
+        buffer.writeln('  • $p');
+      }
+    }
+
+    if (complications.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Possible Complications:');
+      for (var c in complications) {
+        buffer.writeln('  • $c');
+      }
+    }
+
+    if (diagnosticTests.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Diagnostic Tests:');
+      for (var test in diagnosticTests) {
+        buffer.writeln('  • $test');
+      }
+    }
+
     if (top3Predictions.length > 1) {
       buffer.writeln();
       buffer.writeln('Other possible matches:');
       for (var pred in top3Predictions.skip(1)) {
-        buffer.writeln('• ${pred.disease} (${pred.confidence.toStringAsFixed(1)}%)');
+        buffer.writeln('• ${pred.disease}');
       }
     }
 
