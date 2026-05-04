@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:zimdoctors/models/doctor.dart';
@@ -17,6 +18,9 @@ class DoctorDetailScreen extends StatelessWidget {
   final Doctor doctor;
 
   const DoctorDetailScreen({super.key, required this.doctor});
+
+  static const bool _allowUnverifiedPayments =
+      bool.fromEnvironment('ALLOW_UNVERIFIED_PAYMENTS', defaultValue: false);
 
   String _buildWhatsAppBookingMessage(Booking booking) {
     final lines = <String>[
@@ -1175,6 +1179,11 @@ class DoctorDetailScreen extends StatelessWidget {
     );
 
     if (paymentResult != null && paymentResult['success'] == true) {
+      final paymentStatus =
+          (paymentResult['paymentStatus']?.toString().trim().isNotEmpty ?? false)
+              ? paymentResult['paymentStatus'].toString().trim()
+              : 'paid';
+      final isUnverified = paymentResult['unverified'] == true;
       final booking = Booking(
         id: '',
         doctorId: doctor.id,
@@ -1185,7 +1194,7 @@ class DoctorDetailScreen extends StatelessWidget {
         date: selectedDate,
         time: selectedSlot,
         status: 'pending',
-        paymentStatus: 'paid',
+        paymentStatus: paymentStatus,
         transactionRef: paymentResult['reference'],
         amount: doctor.fee.toDouble(),
         createdAt: DateTime.now(),
@@ -1195,9 +1204,11 @@ class DoctorDetailScreen extends StatelessWidget {
         await doctorService.createBookingAtomic(booking);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text(
-                'Booking created! Awaiting doctor confirmation. Payment successful.',
+                isUnverified
+                    ? 'Booking created! Awaiting doctor confirmation. Payment recorded (unverified).'
+                    : 'Booking created! Awaiting doctor confirmation. Payment successful.',
               ),
               backgroundColor: Colors.orange,
             ),
@@ -1478,7 +1489,7 @@ class DoctorDetailScreen extends StatelessWidget {
     User user,
   ) {
     String selectedProvider = 'PZW201'; // Default to Ecocash
-    final phoneController = TextEditingController(text: '+263');
+    final phoneController = TextEditingController();
     bool isPaying = false;
 
     return showModalBottomSheet<Map<String, dynamic>>(
@@ -1580,7 +1591,7 @@ class DoctorDetailScreen extends StatelessWidget {
                         style: const TextStyle(color: Colors.white),
                         keyboardType: TextInputType.phone,
                         decoration: InputDecoration(
-                          hintText: 'e.g. 0771234567',
+                          hintText: 'e.g. 0771234567 or +263771234567',
                           hintStyle: TextStyle(color: Colors.grey[600]),
                           filled: true,
                           fillColor: const Color(0xFF2C2C2C),
@@ -1598,6 +1609,13 @@ class DoctorDetailScreen extends StatelessWidget {
                           onPressed: isPaying
                               ? null
                               : () async {
+                                  if (phoneController.text.trim().isEmpty) {
+                                    _showErrorDialog(
+                                      context,
+                                      'Please enter your EcoCash/OneMoney phone number.',
+                                    );
+                                    return;
+                                  }
                                   setModalState(() => isPaying = true);
                                   try {
                                     final paymentService = PaymentService();
@@ -1632,6 +1650,43 @@ class DoctorDetailScreen extends StatelessWidget {
                                         Navigator.pop(context, {
                                           'success': true,
                                           'reference': response.referenceNumber,
+                                          'paymentStatus': 'paid',
+                                        });
+                                      }
+                                    } else {
+                                      if (selectedProvider == 'PZW201' &&
+                                          _allowUnverifiedPayments &&
+                                          !kReleaseMode) {
+                                        if (context.mounted) {
+                                          Navigator.pop(context, {
+                                            'success': true,
+                                            'reference':
+                                                'UNVERIFIED_${DateTime.now().millisecondsSinceEpoch}',
+                                            'paymentStatus': 'paid',
+                                            'unverified': true,
+                                          });
+                                        }
+                                      } else {
+                                        setModalState(() => isPaying = false);
+                                        if (context.mounted) {
+                                          _showErrorDialog(
+                                            context,
+                                            'Payment initialization failed. Please try again or contact support.',
+                                          );
+                                        }
+                                      }
+                                    }
+                                  } catch (e) {
+                                    if (selectedProvider == 'PZW201' &&
+                                        _allowUnverifiedPayments &&
+                                        !kReleaseMode) {
+                                      if (context.mounted) {
+                                        Navigator.pop(context, {
+                                          'success': true,
+                                          'reference':
+                                              'UNVERIFIED_${DateTime.now().millisecondsSinceEpoch}',
+                                          'paymentStatus': 'paid',
+                                          'unverified': true,
                                         });
                                       }
                                     } else {
@@ -1639,17 +1694,9 @@ class DoctorDetailScreen extends StatelessWidget {
                                       if (context.mounted) {
                                         _showErrorDialog(
                                           context,
-                                          'Payment initialization failed. Please try again or contact support.',
+                                          'A payment error occurred: ${e.toString().replaceAll('Exception: ', '')}',
                                         );
                                       }
-                                    }
-                                  } catch (e) {
-                                    setModalState(() => isPaying = false);
-                                    if (context.mounted) {
-                                      _showErrorDialog(
-                                        context,
-                                        'A payment error occurred: ${e.toString().replaceAll('Exception: ', '')}',
-                                      );
                                     }
                                   }
                                 },
@@ -1676,7 +1723,7 @@ class DoctorDetailScreen extends StatelessWidget {
                       if (isPaying && selectedProvider == 'PZW201') ...[
                         const SizedBox(height: 12),
                         Text(
-                          'Waiting for EcoCash prompt… (about 15 seconds)',
+                          'Waiting for EcoCash prompt... (about 15 seconds)',
                           style: GoogleFonts.inter(
                             color: Colors.grey[400],
                             fontSize: 12,

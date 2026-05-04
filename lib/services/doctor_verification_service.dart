@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:zimdoctors/services/doctor_registry_verification_service.dart';
 import 'package:zimdoctors/models/mdpcz_registry_entry.dart';
+import 'package:flutter/foundation.dart';
 
 class DoctorVerificationOutcome {
   final bool isVerified;
@@ -39,6 +40,14 @@ class DoctorVerificationService {
   }) async {
     final usernameNormalized = _normalizeUsername(username);
     final regNormalized = _normalizeRegistrationNumber(registrationNumber);
+
+    if (regNormalized.trim().isEmpty) {
+      final nameOnlyOutcome = await _verifyAgainstMdpczRegistryByName(
+        usernameNormalized: usernameNormalized,
+      );
+      if (nameOnlyOutcome != null) return nameOnlyOutcome;
+    }
+
     final docRef = _firestore.collection('doctor_verifications').doc(regNormalized);
 
     final cached = await docRef.get();
@@ -142,6 +151,7 @@ class DoctorVerificationService {
     required String usernameNormalized,
     required String registrationNumberNormalized,
   }) async {
+    if (registrationNumberNormalized.trim().isEmpty) return null;
     final doc = await _firestore
         .collection(mdpczRegistryCollection)
         .doc(registrationNumberNormalized)
@@ -172,6 +182,83 @@ class DoctorVerificationService {
     );
   }
 
+  Future<DoctorVerificationOutcome?> _verifyAgainstMdpczRegistryByName({
+    required String usernameNormalized,
+  }) async {
+    // Prefer an exact normalized full-name hit (Excel import + registry scrape both write this).
+    final exactSnapshot = await _firestore
+        .collection(mdpczRegistryCollection)
+        .where('fullNameNormalized', isEqualTo: usernameNormalized)
+        .limit(5)
+        .get();
+
+    if (exactSnapshot.docs.isNotEmpty) {
+      final now = DateTime.now();
+      return DoctorVerificationOutcome(
+        isVerified: true,
+        fromCache: false,
+        verifiedAt: now,
+        verificationProvider: 'mdpcz_registry',
+        verificationUrl: '',
+      );
+    }
+
+    final userTokens = usernameNormalized
+        .split(' ')
+        .map((t) => t.trim())
+        .where((t) => t.length >= 2)
+        .toList();
+    if (userTokens.isEmpty) return null;
+
+    // Firestore only supports "arrayContains" on one value, so query by the first
+    // token and filter candidates client-side.
+    final snapshot = await _firestore
+        .collection(mdpczRegistryCollection)
+        .where('nameTokens', arrayContains: userTokens.first)
+        .limit(50)
+        .get();
+    if (snapshot.docs.isEmpty) return null;
+
+    final matches = <MdpczRegistryEntry>[];
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final entry = MdpczRegistryEntry.fromMap(data, doc.id);
+      if (_matchesRegistryName(usernameNormalized, entry)) {
+        matches.add(entry);
+      }
+    }
+
+    if (matches.isEmpty) {
+      return DoctorVerificationOutcome(
+        isVerified: false,
+        fromCache: false,
+        verifiedAt: null,
+        verificationProvider: 'mdpcz_registry',
+        verificationUrl: '',
+      );
+    }
+
+    // If multiple doctors match the same name tokens, require registration number.
+    if (matches.length > 1) {
+      return DoctorVerificationOutcome(
+        isVerified: false,
+        fromCache: false,
+        verifiedAt: null,
+        verificationProvider: 'mdpcz_registry',
+        verificationUrl: '',
+      );
+    }
+
+    final now = DateTime.now();
+    return DoctorVerificationOutcome(
+      isVerified: true,
+      fromCache: false,
+      verifiedAt: now,
+      verificationProvider: 'mdpcz_registry',
+      verificationUrl: matches.single.sourceUrl,
+    );
+  }
+
   bool _matchesRegistryName(String usernameNormalized, MdpczRegistryEntry entry) {
     final userTokens =
         usernameNormalized.split(' ').map((t) => t.trim()).where((t) => t.length >= 2).toList();
@@ -187,6 +274,46 @@ class DoctorVerificationService {
     if (last.isNotEmpty && !registryTokens.contains(last)) return false;
 
     // Require at least 2 overlaps when possible (first + last), otherwise 1 overlap for single-token names.
+    final overlaps = userTokens.where(registryTokens.contains).length;
+    return userTokens.length == 1 ? overlaps >= 1 : overlaps >= 2;
+  }
+
+  @visibleForTesting
+  static String normalizeUsernameForVerification(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  @visibleForTesting
+  static String normalizeRegistrationNumberForVerification(String value) {
+    final upper = value.trim().toUpperCase().replaceAll(RegExp(r'\s+'), '');
+    return upper.replaceAll(RegExp(r'[^A-Z0-9_-]'), '_');
+  }
+
+  @visibleForTesting
+  static bool matchesRegistryNameForVerification(
+    String username,
+    MdpczRegistryEntry entry,
+  ) {
+    final usernameNormalized = normalizeUsernameForVerification(username);
+    final userTokens = usernameNormalized
+        .split(' ')
+        .map((t) => t.trim())
+        .where((t) => t.length >= 2)
+        .toList();
+    if (userTokens.isEmpty) return false;
+
+    final registryTokens =
+        entry.nameTokens.isNotEmpty ? entry.nameTokens : entry.fullNameNormalized.split(' ').toList();
+
+    final first = userTokens.first;
+    final last = userTokens.length >= 2 ? userTokens.last : '';
+
+    if (!registryTokens.contains(first)) return false;
+    if (last.isNotEmpty && !registryTokens.contains(last)) return false;
+
     final overlaps = userTokens.where(registryTokens.contains).length;
     return userTokens.length == 1 ? overlaps >= 1 : overlaps >= 2;
   }

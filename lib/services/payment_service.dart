@@ -23,7 +23,14 @@ class PaymentService {
     final trimmed = input.trim();
     final cleaned = trimmed.replaceAll(RegExp(r'[^0-9+]'), '');
 
-    final noPlus = cleaned.startsWith('+') ? cleaned.substring(1) : cleaned;
+    var noPlus = cleaned.startsWith('+') ? cleaned.substring(1) : cleaned;
+
+    // Common user input mistake: including the trunk "0" after the country code,
+    // e.g. "+2630771234567" or "263 0 77 123 4567". Normalize to "263771234567".
+    if (noPlus.startsWith('2630') && noPlus.length >= 13) {
+      noPlus = '263${noPlus.substring(4)}';
+    }
+
     if (noPlus.startsWith('0') && noPlus.length >= 10) {
       return '263${noPlus.substring(1)}';
     }

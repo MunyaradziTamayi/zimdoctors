@@ -15,6 +15,10 @@ This file is a lightweight “system test” checklist you can run before a rele
 2. In Firestore, confirm collection `mdpcz_registry` exists and contains documents keyed by normalized registration numbers.
 3. Pick a known doctor from `https://mdpcz.co.zw/public_register` and confirm the stored fields look correct:
    - `fullName`, `registrationNumber`, `specialty`, `sourceUrl`, `scrapedAt`
+4. Doctor account creation requires BOTH:
+   - The doctor's full name (must match the registry entry tokens), and
+   - The exact registration number from the MDPCZ registry (used as the Firestore doc id after normalization).
+   Trying to verify with only a name will fail unless Firecrawl verification is configured.
 
 ## Doctor registration verification (happy path)
 
@@ -40,4 +44,3 @@ This file is a lightweight “system test” checklist you can run before a rele
 
 - Unit/widget tests: `flutter test`
 - Integration smoke test: `flutter test integration_test/app_smoke_test.dart`
-

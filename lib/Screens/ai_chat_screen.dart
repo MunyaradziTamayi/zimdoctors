@@ -6,27 +6,35 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:stts/stts.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:zimdoctors/models/booking.dart';
 import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/services/doctor_service.dart';
 import 'package:zimdoctors/services/disease_api_service.dart';
+import 'package:zimdoctors/services/tts_backend_service.dart';
+import 'package:zimdoctors/services/audio_playback_service.dart';
+import 'package:zimdoctors/services/backend_config.dart';
 import 'package:zimdoctors/Screens/doctors_screen.dart';
 import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
 import 'package:zimdoctors/utils/doctor_recommendation_utils.dart';
 import 'package:zimdoctors/models/diagnosis_response.dart';
 import 'package:zimdoctors/services/user_location_service.dart';
 
+enum AssistantReplyFormat { text, audio }
+
 class Message {
   final String text;
   final String sender; // Changed from bool isUser to String sender
   final DateTime timestamp;
   final bool isRecommendation;
+  final AssistantReplyFormat replyFormat;
 
   Message({
     required this.text,
     required this.sender,
     required this.timestamp,
     this.isRecommendation = false,
+    this.replyFormat = AssistantReplyFormat.text,
   });
 }
 
@@ -52,12 +60,14 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription<SttRecognition>? _sttResultSub;
   StreamSubscription<SttState>? _sttStateSub;
   StreamSubscription<TtsState>? _ttsStateSub;
+  StreamSubscription<PlayerState>? _audioPlayerStateSub;
 
   String? _voiceInitError;
   String _lastRecognitionText = '';
   bool _commitRecognitionOnStop = false;
   DiseaseApiService? _diseaseApi;
   String? _diseaseApiInitError;
+  TtsBackendService? _ttsBackendService;
   final DoctorService _doctorService = DoctorService();
   final UserLocationService _userLocationService = UserLocationServiceImpl();
   UserLocation? _userLocation;
@@ -66,6 +76,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isTranscribing = false;
   bool _isAwaitingAi = false;
   int? _speakingMessageIndex;
+  AssistantReplyFormat _nextReplyFormat = AssistantReplyFormat.text;
 
   String? _selectedLanguage;
   String? _recommendedSpecialty;
@@ -94,7 +105,9 @@ class _ChatScreenState extends State<ChatScreen> {
     getCurrentUser();
     _initDiseaseApi();
     _initSpeech();
+    _initAudioPlayback();
     _loadUserLocation();
+    _loadChatHistory();
 
     _messages.add(
       Message(
@@ -115,6 +128,60 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _userLocation = null);
+    }
+  }
+
+  Future<void> _loadChatHistory() async {
+    try {
+      // Wait for user to be loaded
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (loggedInUser == null) {
+        // User not logged in, only show greeting
+        return;
+      }
+
+      final snapshot = await _chatHistoryQuery().get();
+      if (!mounted) return;
+
+      if (snapshot.docs.isNotEmpty) {
+        final loadedMessages = <Message>[];
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          final timestamp = data['timestamp'] as Timestamp?;
+          loadedMessages.add(
+            Message(
+              text: data['text'] ?? '',
+              sender: data['sender'] ?? '',
+              timestamp: timestamp?.toDate() ?? DateTime.now(),
+              isRecommendation: false,
+              replyFormat: (data['replyFormat'] as String?) == 'audio'
+                  ? AssistantReplyFormat.audio
+                  : AssistantReplyFormat.text,
+            ),
+          );
+        }
+        setState(() {
+          // Remove any greeting message first to replace with loaded history
+          _messages.removeWhere(
+            (m) => m.sender == 'AI' && m.text.contains('How can I help'),
+          );
+          // Insert loaded messages
+          _messages.insertAll(0, loadedMessages);
+          // Add fresh greeting at the end
+          _messages.add(
+            Message(
+              text: widget.recommendDoctor
+                  ? "How can I help match you with a doctor?"
+                  : "Anything else I can help you with?",
+              sender: 'AI',
+              timestamp: DateTime.now(),
+            ),
+          );
+        });
+      }
+    } catch (e) {
+      print('Error loading chat history: $e');
     }
   }
 
@@ -210,8 +277,34 @@ class _ChatScreenState extends State<ChatScreen> {
   void _initDiseaseApi() {
     try {
       _diseaseApi = DiseaseApiService.fromEnv();
+      _initTtsBackendService();
     } catch (e) {
       _diseaseApiInitError = e.toString();
+    }
+  }
+
+  void _initTtsBackendService() {
+    try {
+      final baseUrl = BackendConfig.ttsApiBaseUri().toString();
+      _ttsBackendService = TtsBackendService(baseUrl: baseUrl);
+    } catch (e) {
+      print('Error initializing TTS backend service: $e');
+    }
+  }
+
+  Future<void> _initAudioPlayback() async {
+    try {
+      await AudioPlaybackService.instance.init();
+      _audioPlayerStateSub?.cancel();
+      _audioPlayerStateSub =
+          AudioPlaybackService.instance.playerStateStream.listen((state) {
+        if (!mounted) return;
+        if (state.processingState == ProcessingState.completed) {
+          setState(() => _speakingMessageIndex = null);
+        }
+      });
+    } catch (e) {
+      print('Error initializing audio playback service: $e');
     }
   }
 
@@ -378,12 +471,16 @@ class _ChatScreenState extends State<ChatScreen> {
                                           width: 36,
                                           height: 36,
                                           decoration: BoxDecoration(
-                                            color: Colors.black.withOpacity(0.25),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
+                                            color: Colors.black.withOpacity(
+                                              0.25,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
                                             border: Border.all(
-                                              color:
-                                                  Colors.white.withOpacity(0.06),
+                                              color: Colors.white.withOpacity(
+                                                0.06,
+                                              ),
                                             ),
                                           ),
                                           child: const Icon(
@@ -581,6 +678,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final userEmail = _currentUserId;
     final text = _controller.text.trim();
+    final replyFormatForThisTurn = _nextReplyFormat;
 
     final userMessage = Message(
       text: text,
@@ -597,6 +695,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'timestamp': userMessage.timestamp,
         'userId': _chatUserKey,
         'mode': widget.recommendDoctor ? 'doctor_match' : 'assistant',
+        'replyFormat': 'text',
       });
 
       _controller.clear();
@@ -635,6 +734,7 @@ class _ChatScreenState extends State<ChatScreen> {
               : 'Thinking...',
           sender: 'AI',
           timestamp: DateTime.now(),
+          replyFormat: AssistantReplyFormat.text,
         ),
       );
     });
@@ -693,6 +793,7 @@ class _ChatScreenState extends State<ChatScreen> {
           text: displayReply,
           sender: 'AI',
           timestamp: DateTime.now(),
+          replyFormat: replyFormatForThisTurn,
         );
         _recommendedSearchQuery = inferredSpecialist;
         _recommendedSpecialty = inferredSpecialist;
@@ -720,8 +821,16 @@ class _ChatScreenState extends State<ChatScreen> {
           'timestamp': DateTime.now(),
           'userId': _chatUserKey,
           'mode': widget.recommendDoctor ? 'doctor_match' : 'assistant',
+          'replyFormat': replyFormatForThisTurn == AssistantReplyFormat.audio
+              ? 'audio'
+              : 'text',
         });
       });
+
+      if (replyFormatForThisTurn == AssistantReplyFormat.audio) {
+        // Auto-play the audio reply for this specific message.
+        await _toggleSpeakMessage(placeholderIndex, displayReply);
+      }
 
       await _loadDoctorRecommendations(
         inferredSpecialist,
@@ -734,6 +843,7 @@ class _ChatScreenState extends State<ChatScreen> {
           text: 'Sorry — I could not reach the diagnosis server.\n\nError: $e',
           sender: 'AI',
           timestamp: DateTime.now(),
+          replyFormat: AssistantReplyFormat.text,
         );
       });
     } finally {
@@ -992,28 +1102,65 @@ class _ChatScreenState extends State<ChatScreen> {
     if (trimmed.isEmpty) return;
 
     if (_speakingMessageIndex == index) {
-      await _tts.stop();
+      // Stop current playback
+      if ((_selectedLanguage ?? 'english').toLowerCase() == 'shona') {
+        await AudioPlaybackService.instance.stop();
+      } else {
+        await _tts.stop();
+      }
       if (!mounted) return;
       setState(() => _speakingMessageIndex = null);
       return;
     }
 
     try {
+      // Stop any existing playback
       if (_speakingMessageIndex != null) {
-        await _tts.stop();
+        if ((_selectedLanguage ?? 'english').toLowerCase() == 'shona') {
+          await AudioPlaybackService.instance.stop();
+        } else {
+          await _tts.stop();
+        }
       }
       if (!mounted) return;
       setState(() => _speakingMessageIndex = index);
-      await _setTtsLanguageForSelection();
-      await _tts.start(
-        trimmed,
-        options: const TtsOptions(mode: TtsQueueMode.flush),
-      );
+
+      // Use backend TTS for Shona, system TTS for English
+      if ((_selectedLanguage ?? 'english').toLowerCase() == 'shona') {
+        await _playShonaTts(trimmed);
+      } else {
+        await _playSystemTts(trimmed);
+      }
     } catch (e) {
       _showSnackBar('Text-to-voice failed: $e');
       if (!mounted) return;
       setState(() => _speakingMessageIndex = null);
     }
+  }
+
+  Future<void> _playShonaTts(String text) async {
+    if (_ttsBackendService == null) {
+      throw Exception('TTS backend service not initialized');
+    }
+
+    // Generate speech using backend endpoint
+    final audioFilePath = await _ttsBackendService!.generateSpeech(text);
+
+    if (!mounted) return;
+
+    // Play the generated audio
+    try {
+      await AudioPlaybackService.instance.playFile(audioFilePath);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _speakingMessageIndex = null);
+      rethrow;
+    }
+  }
+
+  Future<void> _playSystemTts(String text) async {
+    await _setTtsLanguageForSelection();
+    await _tts.start(text, options: const TtsOptions(mode: TtsQueueMode.flush));
   }
 
   Future<void> _setTtsLanguageForSelection() async {
@@ -1081,6 +1228,14 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _safeAudioPlaybackDispose() async {
+    try {
+      await AudioPlaybackService.instance.dispose();
+    } catch (_) {
+      // Ignore disposal errors from audio playback service.
+    }
+  }
+
   String _greetingForLanguage(String language) {
     return language == 'shona'
         ? "Mhoroi! Ndini AI yako yekubatsira nezvehutano yeZim Doctors. Ndingakubatsirei nhasi?"
@@ -1093,7 +1248,12 @@ class _ChatScreenState extends State<ChatScreen> {
     if (normalized != 'english' && normalized != 'shona') return;
 
     if (_speakingMessageIndex != null) {
-      await _tts.stop();
+      try {
+        await _tts.stop();
+      } catch (_) {}
+      try {
+        await AudioPlaybackService.instance.stop();
+      } catch (_) {}
     }
 
     final prev = _selectedLanguage;
@@ -1201,6 +1361,113 @@ class _ChatScreenState extends State<ChatScreen> {
     if (selected != null) {
       await _setLanguage(selected);
     }
+  }
+
+  Future<void> _openReplyFormatPicker() async {
+    if (!mounted) return;
+    if (_isAwaitingAi) {
+      _showSnackBar('Please wait for the current reply to finish.');
+      return;
+    }
+
+    final current = _nextReplyFormat;
+    final selected = await showModalBottomSheet<AssistantReplyFormat>(
+      context: context,
+      backgroundColor: const Color(0xFF0F0F0F),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (context) {
+        Widget option({
+          required AssistantReplyFormat value,
+          required String title,
+          required String subtitle,
+          required IconData icon,
+        }) {
+          final isSelected = current == value;
+          return ListTile(
+            onTap: () => Navigator.pop(context, value),
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? const Color(0xFF57E659)
+                    : Colors.white.withAlpha(24),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? Colors.black : Colors.white,
+              ),
+            ),
+            title: Text(
+              title,
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            subtitle: Text(
+              subtitle,
+              style: GoogleFonts.inter(color: Colors.white70),
+            ),
+            trailing: isSelected
+                ? const Icon(Icons.check, color: Color(0xFF57E659))
+                : null,
+          );
+        }
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Reply format',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                option(
+                  value: AssistantReplyFormat.text,
+                  title: 'Text',
+                  subtitle: 'Show replies as text only.',
+                  icon: Icons.text_fields,
+                ),
+                option(
+                  value: AssistantReplyFormat.audio,
+                  title: 'Audio',
+                  subtitle: 'Auto-play replies as voice.',
+                  icon: Icons.volume_up,
+                ),
+                const SizedBox(height: 6),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted) return;
+    if (selected == null) return;
+    setState(() => _nextReplyFormat = selected);
   }
 
   Widget _buildLanguageBanner() {
@@ -1317,6 +1584,16 @@ class _ChatScreenState extends State<ChatScreen> {
             tooltip: 'Change language',
             onPressed: _openLanguagePicker,
             icon: const Icon(Icons.translate, color: Colors.white),
+          ),
+          IconButton(
+            tooltip: 'Reply format',
+            onPressed: _openReplyFormatPicker,
+            icon: Icon(
+              _nextReplyFormat == AssistantReplyFormat.audio
+                  ? Icons.volume_up
+                  : Icons.text_fields,
+              color: Colors.white,
+            ),
           ),
           IconButton(
             tooltip: 'History',
@@ -1497,6 +1774,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildMessageBubble(Message message, int index) {
     final isUser = message.sender == (loggedInUser?.email ?? 'Anonymous');
     final isSpeaking = _speakingMessageIndex == index;
+    final isAudioReply =
+        !isUser &&
+        !message.isRecommendation &&
+        message.replyFormat == AssistantReplyFormat.audio;
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -1519,47 +1800,68 @@ class _ChatScreenState extends State<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Flexible(
-              child: Text(
-                message.text,
-                style: GoogleFonts.inter(
-                  color: isUser ? Colors.black : Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
+              child: isAudioReply
+                  ? Text(
+                      (_selectedLanguage ?? 'english') == 'shona'
+                          ? 'Mhinduro yezwi'
+                          : 'Audio response',
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    )
+                  : Text(
+                      message.text,
+                      style: GoogleFonts.inter(
+                        color: isUser ? Colors.black : Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
             ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _toggleSpeakMessage(index, message.text),
-              child: Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: isUser
-                      ? Colors.black.withOpacity(0.15)
-                      : Colors.white.withOpacity(0.08),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: isSpeaking
-                      ? SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              isUser ? Colors.black : Colors.white,
-                            ),
-                          ),
-                        )
-                      : Icon(
-                          Icons.volume_up,
-                          size: 18,
-                          color: isUser ? Colors.black : Colors.white,
+            if (isAudioReply) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => _toggleSpeakMessage(index, message.text),
+                onLongPress: () {
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Transcript'),
+                      content: SingleChildScrollView(child: Text(message.text)),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Close'),
                         ),
+                      ],
+                    ),
+                  );
+                },
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: isSpeaking
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(
+                            Icons.volume_up,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -1664,6 +1966,8 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     unawaited(_safeTtsStop());
+    unawaited(_safeAudioPlaybackDispose());
+    _audioPlayerStateSub?.cancel();
     _sttResultSub?.cancel();
     _sttStateSub?.cancel();
     _ttsStateSub?.cancel();

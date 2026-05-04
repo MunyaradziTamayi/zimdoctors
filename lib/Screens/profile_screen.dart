@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:zimdoctors/constants.dart';
 import 'package:zimdoctors/Screens/login_screen.dart';
+import 'package:flutter/foundation.dart';
+import 'package:zimdoctors/Screens/mdpcz_registry_sync_debug_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   static const String id = '/profile_screen';
@@ -155,6 +157,21 @@ class ProfileScreen extends StatelessWidget {
               title: 'Notifications',
               subtitle: 'Manage alerts',
             ),
+            if (kDebugMode) ...[
+              const SizedBox(height: 12),
+              _buildMenuTile(
+                context,
+                icon: Icons.sync,
+                title: 'MDPCZ Registry Sync (Debug)',
+                subtitle: 'One-time registry import',
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    MdpczRegistrySyncDebugScreen.id,
+                  );
+                },
+              ),
+            ],
             const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
@@ -232,9 +249,11 @@ class ProfileScreen extends StatelessWidget {
     required String title,
     required String subtitle,
     String? badge,
+    VoidCallback? onTap,
   }) {
     return InkWell(
-      onTap: () {
+      onTap: onTap ??
+          () {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(

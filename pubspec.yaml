@@ -53,7 +53,9 @@ dependencies:
   geolocator: ^13.0.2
   geocoding: ^3.0.0
   http_parser: ^4.1.2
+  excel: ^4.0.6
   mockito: ^5.6.4
+  just_audio: ^0.9.36
 
 dev_dependencies:
   flutter_test:
@@ -74,6 +76,7 @@ flutter:
   assets:
     - .env
     - assets/images/
+    - assets/verifiedDoctors.xlsx
     
 
   

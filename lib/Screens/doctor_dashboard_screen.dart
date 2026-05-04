@@ -10,8 +10,8 @@ import 'package:zimdoctors/models/notification.dart';
 import 'package:zimdoctors/services/notification_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'dart:ui';
 import 'package:zimdoctors/utils/date_utils.dart';
+import 'package:zimdoctors/Screens/doctor_availability_allocation_screen.dart';
 
 class DoctorDashboardScreen extends StatefulWidget {
   static const String id = '/doctor_dashboard_screen';
@@ -980,6 +980,21 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
           ),
           const SizedBox(height: 15),
           _buildStatRow('Experience', _currentDoctor!.experience, Icons.work),
+          const SizedBox(height: 15),
+          _buildActionRow(
+            label: 'Allocate Dates & Slots',
+            icon: Icons.event_available,
+            onTap: () async {
+              final updated = await Navigator.pushNamed(
+                context,
+                DoctorAvailabilityAllocationScreen.id,
+              );
+              if (!mounted) return;
+              if (updated == true) {
+                await _loadDoctorData();
+              }
+            },
+          ),
         ],
       ),
     );
@@ -1007,6 +1022,33 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActionRow({
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xFF57E659)),
+            const SizedBox(width: 20),
+            Text(label, style: GoogleFonts.inter(color: Colors.grey[400])),
+            const Spacer(),
+            const Icon(Icons.chevron_right, color: Colors.white),
+          ],
+        ),
       ),
     );
   }

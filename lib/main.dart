@@ -11,6 +11,8 @@ import 'package:zimdoctors/widgets/add_doctor_form.dart';
 import 'package:zimdoctors/Screens/welcome_screen.dart';
 import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
 import 'package:zimdoctors/Screens/doctor_dashboard_screen.dart';
+import 'package:zimdoctors/Screens/doctor_availability_allocation_screen.dart';
+import 'package:zimdoctors/Screens/mdpcz_registry_sync_debug_screen.dart';
 import 'package:zimdoctors/models/doctor.dart';
 import 'package:zimdoctors/constants.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -74,6 +76,8 @@ class zimdoctors extends StatelessWidget {
         ChatScreen.id: (context) => const ChatScreen(),
         Welcomescreen.id: (context) => const Welcomescreen(),
         DoctorDashboardScreen.id: (context) => const DoctorDashboardScreen(),
+        DoctorAvailabilityAllocationScreen.id: (context) =>
+            const DoctorAvailabilityAllocationScreen(),
         DoctorDetailScreen.id: (context) {
           final doctor = ModalRoute.of(context)!.settings.arguments as Doctor;
           return DoctorDetailScreen(doctor: doctor);
@@ -93,6 +97,8 @@ class zimdoctors extends StatelessWidget {
           );
         },
         ProfileScreen.id: (context) => const ProfileScreen(),
+        MdpczRegistrySyncDebugScreen.id: (context) =>
+            const MdpczRegistrySyncDebugScreen(),
       },
     );
   }
