@@ -154,6 +154,24 @@ class DoctorDetailScreen extends StatelessWidget {
     List<Booking> bookings, {
     required DateTime now,
   }) {
+    // Demo-friendly behavior: once a patient makes a booking with this doctor,
+    // unlock the communication buttons (WhatsApp/SMS/Call). This makes it easy
+    // to showcase the flow without requiring payment/confirmation/time-window.
+    Booking? latestNonCancelled;
+    for (final b in bookings) {
+      if (b.status == 'cancelled') continue;
+      latestNonCancelled = b;
+      break;
+    }
+    if (latestNonCancelled != null) {
+      return _CommunicationGate(
+        canCommunicate: true,
+        message: 'Communication unlocked (booking detected).',
+        activeBooking: latestNonCancelled,
+        reschedulableBooking: null,
+      );
+    }
+
     final windows = <Booking, AppointmentWindow>{};
     for (final b in bookings) {
       final w = DateUtilsX.tryParseAppointmentWindow(b.date, b.time);
@@ -218,7 +236,7 @@ class DoctorDetailScreen extends StatelessWidget {
     if (paidNotCancelled.isEmpty) {
       return _CommunicationGate(
         canCommunicate: false,
-        message: 'Communication unlocks only after you book and pay.',
+        message: 'Book an appointment to unlock communication.',
         activeBooking: null,
         reschedulableBooking: null,
       );

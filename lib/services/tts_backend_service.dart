@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 class TtsBackendService {
   final String baseUrl;
   final http.Client _client;
+  bool _isWarmedUp = false;
 
   TtsBackendService({
     required this.baseUrl,
@@ -36,32 +37,59 @@ class TtsBackendService {
     try {
       final uri = _ttsUri();
       
-      final response = await _client
-          .post(
-            uri,
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'text': text}),
-          )
-          .timeout(const Duration(seconds: 30));
+      // First request can be slower due to backend cold-start/model load.
+      final headersTimeout = _isWarmedUp
+          ? const Duration(seconds: 30)
+          : const Duration(seconds: 60);
 
-      if (response.statusCode != 200) {
+      // Allow extra time for the server to finish sending the WAV bytes,
+      // especially if it's doing on-the-fly synthesis.
+      final bodyTimeout = _isWarmedUp
+          ? const Duration(seconds: 45)
+          : const Duration(seconds: 90);
+
+      final request = http.Request('POST', uri)
+        ..headers.addAll(const {
+          'Content-Type': 'application/json',
+          'Accept': 'audio/wav',
+          // If the backend incorrectly keeps the connection open (chunked
+          // transfer without completing), this encourages it to close after
+          // sending the bytes.
+          'Connection': 'close',
+        })
+        ..body = jsonEncode({'text': text});
+
+      final streamed = await _client.send(request).timeout(headersTimeout);
+      final statusCode = streamed.statusCode;
+      final audioBytes = await streamed.stream.toBytes().timeout(bodyTimeout);
+
+      if (statusCode != 200) {
+        final bodyText = utf8.decode(audioBytes, allowMalformed: true);
         throw Exception(
-          'TTS endpoint returned status ${response.statusCode}: ${response.body}',
+          'TTS endpoint returned status $statusCode: $bodyText',
         );
       }
+      if (audioBytes.isEmpty) {
+        throw Exception('TTS endpoint returned an empty audio payload.');
+      }
 
-      // Save the audio to a temporary file
-      final audioBytes = response.bodyBytes;
+      _isWarmedUp = true;
       final tempDir = await getTemporaryDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final filePath = '${tempDir.path}/shona_tts_$timestamp.wav';
       final file = File(filePath);
-      await file.writeAsBytes(audioBytes);
+      await file.writeAsBytes(audioBytes, flush: true);
 
       return filePath;
     } on SocketException catch (e) {
       throw Exception(
         'Failed to connect to TTS backend at $baseUrl: ${e.message}',
+      );
+    } on TimeoutException catch (e) {
+      throw Exception(
+        'TTS backend timed out. If you see 200 responses but timeouts, '
+        'the server may not be completing/closing the response body. '
+        'Details: $e',
       );
     } catch (e) {
       throw Exception('Error generating speech: $e');

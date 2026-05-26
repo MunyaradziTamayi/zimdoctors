@@ -19,6 +19,7 @@ import 'package:zimdoctors/Screens/doctor_detail_screen.dart';
 import 'package:zimdoctors/utils/doctor_recommendation_utils.dart';
 import 'package:zimdoctors/models/diagnosis_response.dart';
 import 'package:zimdoctors/services/user_location_service.dart';
+import 'package:zimdoctors/widgets/tts_button.dart';
 
 enum AssistantReplyFormat { text, audio }
 
@@ -648,6 +649,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                   ),
+                  TtsButton(
+                    text: text,
+                    baseUrl: BackendConfig.ttsApiBaseUri().toString(),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1104,9 +1109,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_speakingMessageIndex == index) {
       // Stop current playback
       if ((_selectedLanguage ?? 'english').toLowerCase() == 'shona') {
-        await AudioPlaybackService.instance.stop();
+        await _safeAudioStop();
       } else {
-        await _tts.stop();
+        await _safeTtsStop();
       }
       if (!mounted) return;
       setState(() => _speakingMessageIndex = null);
@@ -1117,9 +1122,9 @@ class _ChatScreenState extends State<ChatScreen> {
       // Stop any existing playback
       if (_speakingMessageIndex != null) {
         if ((_selectedLanguage ?? 'english').toLowerCase() == 'shona') {
-          await AudioPlaybackService.instance.stop();
+          await _safeAudioStop();
         } else {
-          await _tts.stop();
+          await _safeTtsStop();
         }
       }
       if (!mounted) return;
@@ -1202,8 +1207,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _safeTtsStop() async {
     try {
-      await _tts.stop();
+      await _tts.stop().timeout(const Duration(seconds: 2));
     } catch (e) {
+      if (e is TimeoutException) {
+        // Some platform TTS implementations can hang and never respond.
+        // Treat stop as best-effort to avoid deadlocking the UI.
+        return;
+      }
       if (e is PlatformException &&
           e.message?.contains('No active stream') == true) {
         return;
@@ -1222,9 +1232,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _safeTtsDispose() async {
     try {
-      await _tts.dispose();
+      await _tts.dispose().timeout(const Duration(seconds: 2));
     } catch (_) {
       // Ignore disposal errors from inactive TTS engine.
+    }
+  }
+
+  Future<void> _safeAudioStop() async {
+    try {
+      await AudioPlaybackService.instance
+          .stop()
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // Best-effort: don't let audio stop failures/hangs block the UI.
     }
   }
 
@@ -1249,11 +1269,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (_speakingMessageIndex != null) {
       try {
-        await _tts.stop();
-      } catch (_) {}
-      try {
-        await AudioPlaybackService.instance.stop();
-      } catch (_) {}
+        await _safeTtsStop();
+      } catch (_) {
+        // Keep language switch responsive even if TTS stop fails.
+      }
+      await _safeAudioStop();
     }
 
     final prev = _selectedLanguage;
